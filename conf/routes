@@ -6,7 +6,7 @@
 GET     /                           controllers.Application.index
 
 #Socket IO Connection stuff
-GET     /socket.io/1/               controllers.SocketIO.init
+# GET     /socket.io/1/               controllers.SocketIO.init
 GET     /socket.io/1/websocket/:sessionId      controllers.SocketIO.socketSetup(sessionId)
 
 # Map static resources from the /public folder to the /assets URL path

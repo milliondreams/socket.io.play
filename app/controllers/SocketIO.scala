@@ -22,11 +22,11 @@ object SocketIO extends Controller {
     Akka.system.actorOf(Props[SocketIOActor])
   }
 
-  def init = Action {
+  /* def init = Action {
     val sessionId = java.util.UUID.randomUUID().toString()
     println(sessionId)
     Ok(sessionId + ":1:10:websocket")
-  }
+  } */
 
   def socketSetup(sessionId: String) = WebSocket.async[JsValue] {
     request =>
