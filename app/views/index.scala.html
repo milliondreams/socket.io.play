@@ -1,7 +1,26 @@
-@(message: String)
+@(message: String)(implicit request: RequestHeader)
 
 @main("Welcome to Play 2.0") {
-    
-    @welcome(message)
-    
+
+    <div><ul id="messages"></ul></div>
+    <script type="text/javascript"  src="@routes.Assets.at("socket.io/dist/socket.io.js")"></script>
+    <input type="button" name="hello" value="hello" id="hello" />
+    <script type="text/javascript">
+         $(document).ready(function(){
+            //var socket = io.connect("http://127.0.0.1:9000/");
+             var WS = window['MozWebSocket'] ? MozWebSocket : WebSocket
+             var chatSocket = new WS("@routes.SocketIO.socketSetup(java.util.UUID.randomUUID().toString()).webSocketURL()")
+
+             chatSocket.onmessage = function receiveMessage(msg){
+                 console.log(msg);
+                 $('#messages').append("<li>" + msg.data + "</li>");
+             }
+
+             $('#hello').click(function(){
+                chatSocket.send(JSON.stringify({message:"hello"}));
+             });
+         });
+
+    </script>
+
 }
