@@ -7,17 +7,19 @@
     <input type="button" name="hello" value="hello" id="hello" />
     <script type="text/javascript">
          $(document).ready(function(){
-            //var socket = io.connect("http://127.0.0.1:9000/");
-             var WS = window['MozWebSocket'] ? MozWebSocket : WebSocket
-             var chatSocket = new WS("@routes.SocketIO.socketSetup(java.util.UUID.randomUUID().toString()).webSocketURL()")
+             var socket = io.connect("http://127.0.0.1:9000/");
 
-             chatSocket.onmessage = function receiveMessage(msg){
-                 console.log(msg);
-                 $('#messages').append("<li>" + msg.data + "</li>");
-             }
+
+             socket.on("connect", function(){
+                 console.log("hello ---- ");
+                 socket.on("message", function(msg){
+                    console.log(msg);
+                    $('#messages').append("<li>" + msg + "</li>");
+                 });
+             });
 
              $('#hello').click(function(){
-                chatSocket.send(JSON.stringify({message:"hello"}));
+                socket.send(JSON.stringify({message:"hello"}));
              });
          });
 
