@@ -26,7 +26,7 @@ object SocketIO extends Controller {
   def init = Action {
     val sessionId = java.util.UUID.randomUUID().toString()
     println(sessionId)
-    Ok(sessionId + ":15:10:websocket")
+    Ok(sessionId + ":20:15:websocket")
   }
 
   def socketSetup(sessionId: String) = WebSocket.async[String] {
@@ -37,10 +37,16 @@ object SocketIO extends Controller {
 
           println("Connected")
           // Create an Iteratee to consume the feed
-          val iteratee = Iteratee.foreach[String] {
-            event =>
-              println("Talking -- " + event)
-              socketIOActor ! ServerMessage(sessionId, event)
+          val iteratee = Iteratee.foreach[String] { event =>
+            event match {
+              case "2::" => {/*do nothing */
+                println("HEARTBEAT")
+              }
+              case _ => {
+                println("Talking -- " + event)
+                socketIOActor ! ServerMessage(sessionId, event)
+              }
+            }
           }.mapDone {
             _ =>
               println("Quit!!!")
@@ -72,7 +78,9 @@ object SocketIO extends Controller {
 
 class SocketIOActor extends Actor {
 
-  var sessions = Map.empty[String, PushEnumerator[String]]
+  var sessions = Map.empty[String, SocketIOSession]
+  val timeout = 10 second
+
 
   def receive = {
     case Join(sessionId) => {
@@ -81,7 +89,8 @@ class SocketIOActor extends Actor {
       if (sessions.contains(sessionId)) {
         sender ! CannotConnect(Json.stringify(Json.toJson(Map("error" -> "Invalid Session ID"))))
       } else {
-        sessions = sessions + (sessionId -> channel)
+        val heartbeatSchedule = Akka.system.scheduler.scheduleOnce(timeout, self, Heartbeat(sessionId))
+        sessions = sessions + (sessionId -> SocketIOSession(channel, heartbeatSchedule))
         sender ! Connected(channel)
       }
     }
@@ -102,11 +111,21 @@ class SocketIOActor extends Actor {
       println("Sending connect response -- " + message)
       notify(sessionId, message)
     }
+
+    case Heartbeat(sessionId) => {
+      notify(sessionId, "2::")
+    }
   }
 
   def notify(sessionId:String, message:String) {
     println("Sending message -- " + message)
-    sessions(sessionId).push(message)
+    val session = sessions.get(sessionId).get
+    session.channel.push(message)
+    session.schedule.cancel()
+    session.schedule = Akka.system.scheduler.scheduleOnce(timeout){
+      self ! Heartbeat(sessionId)
+    }
+
   }
 }
 
@@ -123,3 +142,5 @@ case class Quit(sessionId: String)
 case class CannotConnect(message: String)
 
 case class Connected(enumerator: Enumerator[String])
+
+case class SocketIOSession(val channel:PushEnumerator[String], var schedule:Cancellable)
