@@ -14,6 +14,7 @@ import play.api.Play.current
 import akka.util.Timeout
 import akka.pattern.ask
 import com.sun.xml.internal.ws.handler.ClientMessageHandlerTube
+import socketio.{Packet, PacketTypes, Parser}
 
 object SocketIO extends Controller {
 
@@ -38,8 +39,15 @@ object SocketIO extends Controller {
           println("Connected")
           // Create an Iteratee to consume the feed
           val iteratee = Iteratee.foreach[String] { event =>
-            event match {
-              case "2::" => {/*do nothing */
+
+            println("Got this -- " + event)
+
+            val packet = Parser.decodePacket(event)
+
+            println(packet)
+
+            packet.packetType match {
+              case PacketTypes.HEARTBEAT => {/*do nothing */
                 println("HEARTBEAT")
               }
               case _ => {
@@ -54,8 +62,8 @@ object SocketIO extends Controller {
           }
 
           //println("Sending connect response")
-          socketIOActor ! ClientMessage(sessionId, "1::")
-          socketIOActor ! ClientMessage(sessionId, ":5:::{\"name\":\"eventConnect\",\"args\":[{\"message\":\"welcome\"}]}")
+          socketIOActor ! ClientMessage(sessionId, Packet(packetType = PacketTypes.CONNECT))
+          //socketIOActor ! ClientMessage(sessionId, Packet(packetType = PacketTypes.MESSAGE, data = "{\"name\":\"eventConnect\",\"args\":[{\"message\":\"welcome\"}]}"))
 
           (iteratee, enumerator)
 
@@ -98,7 +106,15 @@ class SocketIOActor extends Actor {
       println(sessionId + "---" + event)
       //DO your message processing here! Like saving the data
       val id = math.round(math.random * 1000)
-      notify(sessionId, ":3:::" + Json.stringify(Json.toJson(Map("id" -> id))))
+      notify(sessionId,
+        Parser.encodePacket(
+          Packet(
+            packetType = PacketTypes.MESSAGE,
+            data = Json.stringify(Json.toJson(Map("id" -> id)))
+          )
+        )
+      )
+
 
     }
 
@@ -109,11 +125,12 @@ class SocketIOActor extends Actor {
 
     case ClientMessage(sessionId, message) => {
       println("Sending connect response -- " + message)
-      notify(sessionId, message)
+      notify(sessionId, Parser.encodePacket(message))
     }
 
     case Heartbeat(sessionId) => {
-      notify(sessionId, "2::")
+      notify(sessionId, Parser.encodePacket(Packet(packetType = PacketTypes.HEARTBEAT)))
+
     }
   }
 
@@ -135,7 +152,7 @@ case class Heartbeat(sessionId: String)
 
 case class ServerMessage(sessionId:String, message:String)
 
-case class ClientMessage(sessionId:String, message:String)
+case class ClientMessage(sessionId:String, message:Packet)
 
 case class Quit(sessionId: String)
 
