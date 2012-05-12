@@ -10,6 +10,7 @@
 
 
             <br/>
+    <input type="text" name="socket" value="0" id="socketNo" />
     <input type="text" name="data" value="data" id="socketData" />
     <input type="button" name="Send message" value="msg" id="msgButton" />
     <input type="button" name="Emit event" value="event" id="eventButton" />
@@ -20,39 +21,62 @@
          $(document).ready(function(){
 
              $("#connectBtn").click(function(){
-                 var socket = io.connect();
-                 socket.on("connect", function(){
+                 var socket = [];
+                 socket[0] = io.connect();
+                 socket[1] = io.connect("/test");
+
+
+                 socket[1].on("connect", function(){
+                    console.log("onSecondSocket");
+
+                     socket[1].on("message", function(msg){
+                         console.log(msg);
+                         $('#messages').append("<li> 2 --" + msg + "</li>");
+                     });
+
+                     socket[1].on("disconnect", function(){
+                         console.log(" 2 -- disconnect");
+                     });
+
+                     socket[1].on("someEvt", function(data){
+                         console.log("someEvt" + data);
+                         $('#messages').append("<li>  2 -- someEvt -- " + data + "</li>");
+                     });
+
+                 });
+
+                 socket[0].on("connect", function(){
                      console.log("hello ---- ");
-                     socket.on("message", function(msg){
+                     socket[0].on("message", function(msg){
                         console.log(msg);
                         $('#messages').append("<li>" + msg + "</li>");
                      });
 
-                     socket.on("disconnect", function(){
+                     socket[0].on("disconnect", function(){
                         console.log("disconnect");
                      });
 
-                     socket.on("someEvt", function(data){
+                     socket[0].on("someEvt", function(data){
                          console.log("someEvt" + data);
                          $('#messages').append("<li> someEvt -- " + data + "</li>");
                      });
-
                  });
 
                  $('#msgButton').click(function(){
-                     socket.send($("#socketData").val());
+                     socket[$('#socketNo').val()].send($("#socketData").val());
                  });
 
                  $('#eventButton').click(function(){
-                     socket.emit("someEvt", $("#socketData").val());
+                     socket[$('#socketNo').val()].emit("someEvt", $("#socketData").val());
                  });
 
                  $('#jsonButton').click(function(){
-                     socket.json.send({"sockData" : $("#socketData").val()});
+                     socket[$('#socketNo').val()].json.send({"sockData" : $("#socketData").val()});
                  });
 
                  $("#disconnectBtn").click(function(){
-                     socket.disconnect();
+                     socket[1].disconnect();
+                     socket[0].disconnect();
                  });
              });
 

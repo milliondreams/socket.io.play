@@ -48,24 +48,29 @@ object SocketIO extends Controller {
             println(packet)
 
             packet.packetType match {
-              case PacketTypes.HEARTBEAT => {/*do nothing */
+              case PacketTypes.CONNECT => {
+                socketIOActor ! NewConnection(sessionId, packet.endpoint)
+              }
+
+              case PacketTypes.HEARTBEAT => {
+                /*do nothing */
               }
 
               case PacketTypes.MESSAGE => {
-                socketIOActor ! ServerMessage(sessionId, packet.data)
+                socketIOActor ! ServerMessage(sessionId, packet.endpoint, packet.data)
               }
 
               case PacketTypes.JSON => {
-                socketIOActor ! ServerJsonMessage(sessionId, Json.parse(packet.data))
+                socketIOActor ! ServerJsonMessage(sessionId, packet.endpoint, Json.parse(packet.data))
               }
 
               case PacketTypes.EVENT => {
                 val jdata:JsValue = Json.parse(packet.data)
-                socketIOActor ! ServerEvent(sessionId, (jdata \ "name").asOpt[String].getOrElse("UNNAMED_EVENT"), jdata \ "args")
+                socketIOActor ! ServerEvent(sessionId, packet.endpoint, (jdata \ "name").asOpt[String].getOrElse("UNNAMED_EVENT"), jdata \ "args")
               }
 
               case PacketTypes.DISCONNECT => {
-                socketIOActor ! Disconnect(sessionId)
+                socketIOActor ! Disconnect(sessionId, packet.endpoint)
               }
 
 
@@ -77,7 +82,7 @@ object SocketIO extends Controller {
               socketIOActor ! Quit(sessionId)
           }
 
-          socketIOActor ! ClientMessage(sessionId, Packet(packetType = PacketTypes.CONNECT))
+          socketIOActor ! NewConnection(sessionId, "")
 
           (iteratee, enumerator)
 
@@ -105,6 +110,11 @@ class SocketIOActor extends Actor {
 
 
   def receive = {
+
+    case NewConnection(sessionId, namespace) => {
+      notify(sessionId, Parser.encodePacket(Packet(packetType = PacketTypes.CONNECT, endpoint = namespace)))
+    }
+
     case Join(sessionId) => {
       println(sessionId)
       val channel = Enumerator.imperative[String]()
@@ -117,7 +127,7 @@ class SocketIOActor extends Actor {
       }
     }
 
-    case ServerMessage(sessionId, msg) => {
+    case ServerMessage(sessionId, namespace, msg) => {
       println(sessionId + "---" + msg)
       //DO your message processing here! Like saving the data
       val id = math.round(math.random * 1000)
@@ -125,13 +135,14 @@ class SocketIOActor extends Actor {
         Parser.encodePacket(
           Packet(
             packetType = PacketTypes.MESSAGE,
-            data = msg
+            data = msg,
+            endpoint = namespace
           )
         )
       )
     }
 
-    case ServerEvent(sessionId, eventName, eventData) => {
+    case ServerEvent(sessionId, namespace, eventName, eventData) => {
       println(sessionId + "---" + eventName + " -- " + eventData)
       //DO your message processing here! Like saving the data
       val id = math.round(math.random * 1000)
@@ -139,6 +150,7 @@ class SocketIOActor extends Actor {
         Parser.encodePacket(
           Packet(
             packetType = PacketTypes.EVENT,
+            endpoint = namespace,
             data = Json.stringify(Json.toJson(Map(
                 "name" -> Json.toJson(eventName),
                 "args" -> eventData
@@ -149,7 +161,7 @@ class SocketIOActor extends Actor {
       )
     }
 
-    case ServerJsonMessage(sessionId, json) => {
+    case ServerJsonMessage(sessionId, namespace, json) => {
       println(sessionId + "---" + json)
       //DO your message processing here! Like saving the data
       val id = math.round(math.random * 1000)
@@ -157,6 +169,7 @@ class SocketIOActor extends Actor {
         Parser.encodePacket(
           Packet(
             packetType = PacketTypes.JSON,
+            endpoint = namespace,
             data = Json.stringify(json)
           )
         )
@@ -173,8 +186,8 @@ class SocketIOActor extends Actor {
 
     }
 
-    case Disconnect(sessionId) => {
-      notify(sessionId, Parser.encodePacket(Packet(packetType = PacketTypes.DISCONNECT)))
+    case Disconnect(sessionId, namespace) => {
+      notify(sessionId, Parser.encodePacket(Packet(packetType = PacketTypes.DISCONNECT, endpoint = namespace)))
     }
 
     case Quit(sessionId) => {
@@ -205,19 +218,21 @@ case class Join(sessionId: String)
 
 case class Heartbeat(sessionId: String)
 
-case class ServerMessage(sessionId:String, message:String)
+case class NewConnection(sessionId:String, namespace:String)
+
+case class ServerMessage(sessionId:String, namespace:String, message:String)
 
 case class ClientMessage(sessionId:String, message:Packet)
 
-case class ServerJsonMessage(sessionId:String, message:JsValue)
+case class ServerJsonMessage(sessionId:String, namespace:String, message:JsValue)
 
 case class ClientJsonMessage(sessionId:String, message:Packet)
 
-case class ServerEvent(sessionId:String, eventType:String, message:JsValue)
+case class ServerEvent(sessionId:String, namespace:String, eventType:String, message:JsValue)
 
 case class ClientEvent(sessionId:String, message:Packet)
 
-case class Disconnect(sessionId:String)
+case class Disconnect(sessionId:String, namespace:String)
 
 case class Quit(sessionId: String)
 
