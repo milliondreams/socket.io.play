@@ -71,17 +71,12 @@ object Parser {
     val xEndpoint = Option(pendpoint).getOrElse("")
     val xData = Option(pdata).getOrElse("")
 
-
-    println(PacketTypes.list.toList)
-    println("->" + ptype)
-    println(xPacketType)
-
     Packet(
-      packetType = xPacketType,
-      msgId = xMsgId,
-      ack = xAck,
-      endpoint = xEndpoint,
-      data = xData)
+      packetType = PacketTypes.list(ptype.toInt),
+      msgId = Option(pid).getOrElse("0").toInt,
+      ack = !(Option(pack).getOrElse("").isEmpty),
+      endpoint = Option(pendpoint).getOrElse(""),
+      data = Option(pdata).getOrElse(""))
   }
 
   def encodePacket(packet:Packet) = {

@@ -4,23 +4,58 @@
 
     <div><ul id="messages"></ul></div>
     <script type="text/javascript"  src="@routes.Assets.at("socket.io/dist/socket.io.js")"></script>
-    <input type="button" name="hello" value="hello" id="hello" />
+
+    <input type="button" name="Connect" value="Connect" id="connectBtn" />
+    <input type="button" name="Disconnect" value="Disconnect" id="disconnectBtn" />
+
+
+            <br/>
+    <input type="text" name="data" value="data" id="socketData" />
+    <input type="button" name="Send message" value="msg" id="msgButton" />
+    <input type="button" name="Emit event" value="event" id="eventButton" />
+    <input type="button" name="Send JSON" value="JSON" id="jsonButton" />
+
+
     <script type="text/javascript">
          $(document).ready(function(){
-             var socket = io.connect("http://127.0.0.1:9000/");
 
+             $("#connectBtn").click(function(){
+                 var socket = io.connect();
+                 socket.on("connect", function(){
+                     console.log("hello ---- ");
+                     socket.on("message", function(msg){
+                        console.log(msg);
+                        $('#messages').append("<li>" + msg + "</li>");
+                     });
 
-             socket.on("connect", function(){
-                 console.log("hello ---- ");
-                 socket.on("message", function(msg){
-                    console.log(msg);
-                    $('#messages').append("<li>" + msg + "</li>");
+                     socket.on("disconnect", function(){
+                        console.log("disconnect");
+                     });
+
+                     socket.on("someEvt", function(data){
+                         console.log("someEvt" + data);
+                         $('#messages').append("<li> someEvt -- " + data + "</li>");
+                     });
+
+                 });
+
+                 $('#msgButton').click(function(){
+                     socket.send($("#socketData").val());
+                 });
+
+                 $('#eventButton').click(function(){
+                     socket.emit("someEvt", $("#socketData").val());
+                 });
+
+                 $('#jsonButton').click(function(){
+                     socket.json.send({"sockData" : $("#socketData").val()});
+                 });
+
+                 $("#disconnectBtn").click(function(){
+                     socket.disconnect();
                  });
              });
 
-             $('#hello').click(function(){
-                socket.send(JSON.stringify({message:"hello"}));
-             });
          });
 
     </script>

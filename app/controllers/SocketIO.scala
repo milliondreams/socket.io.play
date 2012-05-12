@@ -15,6 +15,7 @@ import akka.util.Timeout
 import akka.pattern.ask
 import com.sun.xml.internal.ws.handler.ClientMessageHandlerTube
 import socketio.{Packet, PacketTypes, Parser}
+import org.codehaus.jackson.annotate.JsonValue
 
 object SocketIO extends Controller {
 
@@ -48,12 +49,27 @@ object SocketIO extends Controller {
 
             packet.packetType match {
               case PacketTypes.HEARTBEAT => {/*do nothing */
-                println("HEARTBEAT")
               }
-              case _ => {
-                println("Talking -- " + event)
-                socketIOActor ! ServerMessage(sessionId, event)
+
+              case PacketTypes.MESSAGE => {
+                socketIOActor ! ServerMessage(sessionId, packet.data)
               }
+
+              case PacketTypes.JSON => {
+                socketIOActor ! ServerJsonMessage(sessionId, Json.parse(packet.data))
+              }
+
+              case PacketTypes.EVENT => {
+                val jdata:JsValue = Json.parse(packet.data)
+                socketIOActor ! ServerEvent(sessionId, (jdata \ "name").asOpt[String].getOrElse("UNNAMED_EVENT"), jdata \ "args")
+              }
+
+              case PacketTypes.DISCONNECT => {
+                socketIOActor ! Disconnect(sessionId)
+              }
+
+
+
             }
           }.mapDone {
             _ =>
@@ -61,9 +77,7 @@ object SocketIO extends Controller {
               socketIOActor ! Quit(sessionId)
           }
 
-          //println("Sending connect response")
           socketIOActor ! ClientMessage(sessionId, Packet(packetType = PacketTypes.CONNECT))
-          //socketIOActor ! ClientMessage(sessionId, Packet(packetType = PacketTypes.MESSAGE, data = "{\"name\":\"eventConnect\",\"args\":[{\"message\":\"welcome\"}]}"))
 
           (iteratee, enumerator)
 
@@ -102,25 +116,51 @@ class SocketIOActor extends Actor {
         sender ! Connected(channel)
       }
     }
-    case ServerMessage(sessionId, event) => {
-      println(sessionId + "---" + event)
+
+    case ServerMessage(sessionId, msg) => {
+      println(sessionId + "---" + msg)
       //DO your message processing here! Like saving the data
       val id = math.round(math.random * 1000)
       notify(sessionId,
         Parser.encodePacket(
           Packet(
             packetType = PacketTypes.MESSAGE,
-            data = Json.stringify(Json.toJson(Map("id" -> id)))
+            data = msg
           )
         )
       )
-
-
     }
 
-    case Quit(sessionId) => {
-      sessions = sessions - sessionId
-      println(sessionId + "--- QUIT")
+    case ServerEvent(sessionId, eventName, eventData) => {
+      println(sessionId + "---" + eventName + " -- " + eventData)
+      //DO your message processing here! Like saving the data
+      val id = math.round(math.random * 1000)
+      notify(sessionId,
+        Parser.encodePacket(
+          Packet(
+            packetType = PacketTypes.EVENT,
+            data = Json.stringify(Json.toJson(Map(
+                "name" -> Json.toJson(eventName),
+                "args" -> eventData
+              )
+            ))
+          )
+        )
+      )
+    }
+
+    case ServerJsonMessage(sessionId, json) => {
+      println(sessionId + "---" + json)
+      //DO your message processing here! Like saving the data
+      val id = math.round(math.random * 1000)
+      notify(sessionId,
+        Parser.encodePacket(
+          Packet(
+            packetType = PacketTypes.JSON,
+            data = Json.stringify(json)
+          )
+        )
+      )
     }
 
     case ClientMessage(sessionId, message) => {
@@ -132,6 +172,21 @@ class SocketIOActor extends Actor {
       notify(sessionId, Parser.encodePacket(Packet(packetType = PacketTypes.HEARTBEAT)))
 
     }
+
+    case Disconnect(sessionId) => {
+      notify(sessionId, Parser.encodePacket(Packet(packetType = PacketTypes.DISCONNECT)))
+    }
+
+    case Quit(sessionId) => {
+      if (sessions.contains(sessionId)) {
+        val session = sessions.get(sessionId).get
+        session.schedule.cancel()
+        session.channel.close()
+        sessions = sessions - sessionId
+        println(sessionId + "--- QUIT")
+      }
+    }
+
   }
 
   def notify(sessionId:String, message:String) {
@@ -153,6 +208,16 @@ case class Heartbeat(sessionId: String)
 case class ServerMessage(sessionId:String, message:String)
 
 case class ClientMessage(sessionId:String, message:Packet)
+
+case class ServerJsonMessage(sessionId:String, message:JsValue)
+
+case class ClientJsonMessage(sessionId:String, message:Packet)
+
+case class ServerEvent(sessionId:String, eventType:String, message:JsValue)
+
+case class ClientEvent(sessionId:String, message:Packet)
+
+case class Disconnect(sessionId:String)
 
 case class Quit(sessionId: String)
 
