@@ -39,43 +39,12 @@ object SocketIO extends Controller {
 
           println("ConnectionEstablished")
           // Create an Iteratee to consume the feed
-          val iteratee = Iteratee.foreach[String] { event =>
+          val iteratee = Iteratee.foreach[String] { socketData =>
 
-            println("Got this -- " + event)
+            println("Got this -- " + socketData)
 
-            val packet = Parser.decodePacket(event)
+            socketIOActor ! ProcessRawSocketData(sessionId, socketData)
 
-            println(packet)
-
-            packet.packetType match {
-              case PacketTypes.CONNECT => {
-                socketIOActor ! NotifyConnected(sessionId, packet.endpoint)
-              }
-
-              case PacketTypes.HEARTBEAT => {
-                /*do nothing */
-              }
-
-              case PacketTypes.MESSAGE => {
-                socketIOActor ! ReceiveMessage(sessionId, packet.endpoint, packet.data)
-              }
-
-              case PacketTypes.JSON => {
-                socketIOActor ! ReceiveJsonMessage(sessionId, packet.endpoint, Json.parse(packet.data))
-              }
-
-              case PacketTypes.EVENT => {
-                val jdata:JsValue = Json.parse(packet.data)
-                socketIOActor ! ReceiveEvent(sessionId, packet.endpoint, (jdata \ "name").asOpt[String].getOrElse("UNNAMED_EVENT"), jdata \ "args")
-              }
-
-              case PacketTypes.DISCONNECT => {
-                socketIOActor ! NotifyDisconnect(sessionId, packet.endpoint)
-              }
-
-
-
-            }
           }.mapDone {
             _ =>
               println("Quit!!!")
@@ -103,13 +72,49 @@ object SocketIO extends Controller {
 
 }
 
-trait SocketIOActor extends Actor {
+class SocketIOActor extends Actor {
 
   var sessions = Map.empty[String, SocketIOSession]
   val timeout = 10 second
 
 
   def receive = {
+
+    case ProcessRawSocketData(sessionId, socketData) => {
+      val packet = Parser.decodePacket(socketData)
+
+      println(packet)
+
+      packet.packetType match {
+        case PacketTypes.CONNECT => {
+          self ! NotifyConnected(sessionId, packet.endpoint)
+        }
+
+        case PacketTypes.HEARTBEAT => {
+          /*do nothing */
+        }
+
+        case PacketTypes.MESSAGE => {
+          self! ReceiveMessage(sessionId, packet.endpoint, packet.data)
+        }
+
+        case PacketTypes.JSON => {
+          self ! ReceiveJsonMessage(sessionId, packet.endpoint, Json.parse(packet.data))
+        }
+
+        case PacketTypes.EVENT => {
+          val jdata:JsValue = Json.parse(packet.data)
+          self ! ReceiveEvent(sessionId, packet.endpoint, (jdata \ "name").asOpt[String].getOrElse("UNNAMED_EVENT"), jdata \ "args")
+        }
+
+        case PacketTypes.DISCONNECT => {
+          //self ! NotifyDisconnect(sessionId, packet.endpoint)
+        }
+
+      }
+
+    }
+
 
     case NotifyConnected(sessionId, namespace) => {
       sendPacket(sessionId, Packet(packetType = PacketTypes.CONNECT, endpoint = namespace))
@@ -179,9 +184,9 @@ trait SocketIOActor extends Actor {
       sendPacket(sessionId, Packet(packetType = PacketTypes.HEARTBEAT))
     }
 
-    case NotifyDisconnect(sessionId, namespace) => {
+    /* case NotifyDisconnect(sessionId, namespace) => {
       sendPacket(sessionId, Packet(packetType = PacketTypes.DISCONNECT, endpoint = namespace))
-    }
+    }  */
 
     case Quit(sessionId) => {
       if (sessions.contains(sessionId)) {
@@ -225,7 +230,7 @@ case class ReceiveEvent(sessionId:String, namespace:String, eventType:String, me
 
 case class SendEvent(sessionId:String, packet:Packet)
 
-case class NotifyDisconnect(sessionId:String, namespace:String)
+//case class NotifyDisconnect(sessionId:String, namespace:String)
 
 case class Quit(sessionId: String)
 
@@ -234,3 +239,5 @@ case class NotifyConnectFailure(message: String)
 case class ConnectionEstablished(enumerator: Enumerator[String])
 
 case class SocketIOSession(val channel:PushEnumerator[String], var schedule:Cancellable)
+
+case class ProcessRawSocketData(sessionId:String, socketData:String)
