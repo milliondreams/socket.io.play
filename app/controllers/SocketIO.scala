@@ -103,7 +103,7 @@ object SocketIO extends Controller {
 
 }
 
-class SocketIOActor extends Actor {
+trait SocketIOActor extends Actor {
 
   var sessions = Map.empty[String, SocketIOSession]
   val timeout = 10 second
@@ -112,7 +112,7 @@ class SocketIOActor extends Actor {
   def receive = {
 
     case NotifyConnected(sessionId, namespace) => {
-      notify(sessionId, Parser.encodePacket(Packet(packetType = PacketTypes.CONNECT, endpoint = namespace)))
+      sendPacket(sessionId, Packet(packetType = PacketTypes.CONNECT, endpoint = namespace))
     }
 
     case Join(sessionId) => {
@@ -131,14 +131,12 @@ class SocketIOActor extends Actor {
       println(sessionId + "---" + msg)
       //DO your message processing here! Like saving the data
       val id = math.round(math.random * 1000)
-      notify(sessionId,
-        Parser.encodePacket(
+      sendPacket(sessionId,
           Packet(
             packetType = PacketTypes.MESSAGE,
             data = msg,
             endpoint = namespace
           )
-        )
       )
     }
 
@@ -146,8 +144,7 @@ class SocketIOActor extends Actor {
       println(sessionId + "---" + eventName + " -- " + eventData)
       //DO your message processing here! Like saving the data
       val id = math.round(math.random * 1000)
-      notify(sessionId,
-        Parser.encodePacket(
+      sendPacket(sessionId,
           Packet(
             packetType = PacketTypes.EVENT,
             endpoint = namespace,
@@ -157,7 +154,6 @@ class SocketIOActor extends Actor {
               )
             ))
           )
-        )
       )
     }
 
@@ -165,29 +161,26 @@ class SocketIOActor extends Actor {
       println(sessionId + "---" + json)
       //DO your message processing here! Like saving the data
       val id = math.round(math.random * 1000)
-      notify(sessionId,
-        Parser.encodePacket(
+      sendPacket(sessionId,
           Packet(
             packetType = PacketTypes.JSON,
             endpoint = namespace,
             data = Json.stringify(json)
           )
-        )
       )
     }
 
-    case SendMessage(sessionId, message) => {
-      println("Sending connect response -- " + message)
-      notify(sessionId, Parser.encodePacket(message))
+    case SendMessage(sessionId, packet) => {
+      println("Sending connect response -- " + packet)
+      sendPacket(sessionId, packet)
     }
 
     case Heartbeat(sessionId) => {
-      notify(sessionId, Parser.encodePacket(Packet(packetType = PacketTypes.HEARTBEAT)))
-
+      sendPacket(sessionId, Packet(packetType = PacketTypes.HEARTBEAT))
     }
 
     case NotifyDisconnect(sessionId, namespace) => {
-      notify(sessionId, Parser.encodePacket(Packet(packetType = PacketTypes.DISCONNECT, endpoint = namespace)))
+      sendPacket(sessionId, Packet(packetType = PacketTypes.DISCONNECT, endpoint = namespace))
     }
 
     case Quit(sessionId) => {
@@ -202,10 +195,10 @@ class SocketIOActor extends Actor {
 
   }
 
-  def notify(sessionId:String, message:String) {
-    println("Sending message -- " + message)
+  def sendPacket(sessionId:String, packet:Packet) {
+    println("Sending message -- " + packet)
     val session = sessions.get(sessionId).get
-    session.channel.push(message)
+    session.channel.push(Parser.encodePacket(packet))
     session.schedule.cancel()
     session.schedule = Akka.system.scheduler.scheduleOnce(timeout){
       self ! Heartbeat(sessionId)
@@ -222,15 +215,15 @@ case class NotifyConnected(sessionId:String, namespace:String)
 
 case class ReceiveMessage(sessionId:String, namespace:String, message:String)
 
-case class SendMessage(sessionId:String, message:Packet)
+case class SendMessage(sessionId:String, packet:Packet)
 
 case class ReceiveJsonMessage(sessionId:String, namespace:String, message:JsValue)
 
-case class SendJsonMessage(sessionId:String, message:Packet)
+case class SendJsonMessage(sessionId:String, packet:Packet)
 
 case class ReceiveEvent(sessionId:String, namespace:String, eventType:String, message:JsValue)
 
-case class SendEvent(sessionId:String, message:Packet)
+case class SendEvent(sessionId:String, packet:Packet)
 
 case class NotifyDisconnect(sessionId:String, namespace:String)
 
