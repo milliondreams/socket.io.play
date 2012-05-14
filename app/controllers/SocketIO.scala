@@ -35,9 +35,9 @@ object SocketIO extends Controller {
     request =>
       (socketIOActor ? Join(sessionId)).asPromise.map {
 
-        case Connected(enumerator) =>
+        case ConnectionEstablished(enumerator) =>
 
-          println("Connected")
+          println("ConnectionEstablished")
           // Create an Iteratee to consume the feed
           val iteratee = Iteratee.foreach[String] { event =>
 
@@ -49,7 +49,7 @@ object SocketIO extends Controller {
 
             packet.packetType match {
               case PacketTypes.CONNECT => {
-                socketIOActor ! NewConnection(sessionId, packet.endpoint)
+                socketIOActor ! NotifyConnected(sessionId, packet.endpoint)
               }
 
               case PacketTypes.HEARTBEAT => {
@@ -57,20 +57,20 @@ object SocketIO extends Controller {
               }
 
               case PacketTypes.MESSAGE => {
-                socketIOActor ! ServerMessage(sessionId, packet.endpoint, packet.data)
+                socketIOActor ! ReceiveMessage(sessionId, packet.endpoint, packet.data)
               }
 
               case PacketTypes.JSON => {
-                socketIOActor ! ServerJsonMessage(sessionId, packet.endpoint, Json.parse(packet.data))
+                socketIOActor ! ReceiveJsonMessage(sessionId, packet.endpoint, Json.parse(packet.data))
               }
 
               case PacketTypes.EVENT => {
                 val jdata:JsValue = Json.parse(packet.data)
-                socketIOActor ! ServerEvent(sessionId, packet.endpoint, (jdata \ "name").asOpt[String].getOrElse("UNNAMED_EVENT"), jdata \ "args")
+                socketIOActor ! ReceiveEvent(sessionId, packet.endpoint, (jdata \ "name").asOpt[String].getOrElse("UNNAMED_EVENT"), jdata \ "args")
               }
 
               case PacketTypes.DISCONNECT => {
-                socketIOActor ! Disconnect(sessionId, packet.endpoint)
+                socketIOActor ! NotifyDisconnect(sessionId, packet.endpoint)
               }
 
 
@@ -82,11 +82,11 @@ object SocketIO extends Controller {
               socketIOActor ! Quit(sessionId)
           }
 
-          socketIOActor ! NewConnection(sessionId, "")
+          socketIOActor ! NotifyConnected(sessionId, "")
 
           (iteratee, enumerator)
 
-        case CannotConnect(error) =>
+        case NotifyConnectFailure(error) =>
 
           // Connection error
 
@@ -111,7 +111,7 @@ class SocketIOActor extends Actor {
 
   def receive = {
 
-    case NewConnection(sessionId, namespace) => {
+    case NotifyConnected(sessionId, namespace) => {
       notify(sessionId, Parser.encodePacket(Packet(packetType = PacketTypes.CONNECT, endpoint = namespace)))
     }
 
@@ -119,15 +119,15 @@ class SocketIOActor extends Actor {
       println(sessionId)
       val channel = Enumerator.imperative[String]()
       if (sessions.contains(sessionId)) {
-        sender ! CannotConnect(Json.stringify(Json.toJson(Map("error" -> "Invalid Session ID"))))
+        sender ! NotifyConnectFailure(Json.stringify(Json.toJson(Map("error" -> "Invalid Session ID"))))
       } else {
         val heartbeatSchedule = Akka.system.scheduler.scheduleOnce(timeout, self, Heartbeat(sessionId))
         sessions = sessions + (sessionId -> SocketIOSession(channel, heartbeatSchedule))
-        sender ! Connected(channel)
+        sender ! ConnectionEstablished(channel)
       }
     }
 
-    case ServerMessage(sessionId, namespace, msg) => {
+    case ReceiveMessage(sessionId, namespace, msg) => {
       println(sessionId + "---" + msg)
       //DO your message processing here! Like saving the data
       val id = math.round(math.random * 1000)
@@ -142,7 +142,7 @@ class SocketIOActor extends Actor {
       )
     }
 
-    case ServerEvent(sessionId, namespace, eventName, eventData) => {
+    case ReceiveEvent(sessionId, namespace, eventName, eventData) => {
       println(sessionId + "---" + eventName + " -- " + eventData)
       //DO your message processing here! Like saving the data
       val id = math.round(math.random * 1000)
@@ -161,7 +161,7 @@ class SocketIOActor extends Actor {
       )
     }
 
-    case ServerJsonMessage(sessionId, namespace, json) => {
+    case ReceiveJsonMessage(sessionId, namespace, json) => {
       println(sessionId + "---" + json)
       //DO your message processing here! Like saving the data
       val id = math.round(math.random * 1000)
@@ -176,7 +176,7 @@ class SocketIOActor extends Actor {
       )
     }
 
-    case ClientMessage(sessionId, message) => {
+    case SendMessage(sessionId, message) => {
       println("Sending connect response -- " + message)
       notify(sessionId, Parser.encodePacket(message))
     }
@@ -186,7 +186,7 @@ class SocketIOActor extends Actor {
 
     }
 
-    case Disconnect(sessionId, namespace) => {
+    case NotifyDisconnect(sessionId, namespace) => {
       notify(sessionId, Parser.encodePacket(Packet(packetType = PacketTypes.DISCONNECT, endpoint = namespace)))
     }
 
@@ -218,26 +218,26 @@ case class Join(sessionId: String)
 
 case class Heartbeat(sessionId: String)
 
-case class NewConnection(sessionId:String, namespace:String)
+case class NotifyConnected(sessionId:String, namespace:String)
 
-case class ServerMessage(sessionId:String, namespace:String, message:String)
+case class ReceiveMessage(sessionId:String, namespace:String, message:String)
 
-case class ClientMessage(sessionId:String, message:Packet)
+case class SendMessage(sessionId:String, message:Packet)
 
-case class ServerJsonMessage(sessionId:String, namespace:String, message:JsValue)
+case class ReceiveJsonMessage(sessionId:String, namespace:String, message:JsValue)
 
-case class ClientJsonMessage(sessionId:String, message:Packet)
+case class SendJsonMessage(sessionId:String, message:Packet)
 
-case class ServerEvent(sessionId:String, namespace:String, eventType:String, message:JsValue)
+case class ReceiveEvent(sessionId:String, namespace:String, eventType:String, message:JsValue)
 
-case class ClientEvent(sessionId:String, message:Packet)
+case class SendEvent(sessionId:String, message:Packet)
 
-case class Disconnect(sessionId:String, namespace:String)
+case class NotifyDisconnect(sessionId:String, namespace:String)
 
 case class Quit(sessionId: String)
 
-case class CannotConnect(message: String)
+case class NotifyConnectFailure(message: String)
 
-case class Connected(enumerator: Enumerator[String])
+case class ConnectionEstablished(enumerator: Enumerator[String])
 
 case class SocketIOSession(val channel:PushEnumerator[String], var schedule:Cancellable)
