@@ -6,6 +6,7 @@ import akka.util.duration._
 import play.api._
 import play.api.mvc._
 import play.api.libs.json._
+import play.api.libs.json.JsValue
 import play.api.libs.iteratee._
 import play.api.libs.concurrent._
 
@@ -13,17 +14,15 @@ import play.api.Play.current
 
 import akka.util.Timeout
 import akka.pattern.ask
-import com.sun.xml.internal.ws.handler.ClientMessageHandlerTube
 import socketio.{Packet, PacketTypes, Parser}
-import org.codehaus.jackson.annotate.JsonValue
+import socketio.PacketTypes._
 
-object SocketIO extends Controller {
+
+trait SocketIOController extends Controller {
+
+  val socketIOActor:ActorRef
 
   implicit val timeout = Timeout(10 second)
-
-  lazy val socketIOActor = {
-    Akka.system.actorOf(Props[SocketIOActor])
-  }
 
   def init = Action {
     val sessionId = java.util.UUID.randomUUID().toString()
@@ -72,53 +71,15 @@ object SocketIO extends Controller {
 
 }
 
-class SocketIOActor extends Actor {
+trait SocketIOActor extends Actor {
 
   var sessions = Map.empty[String, SocketIOSession]
   val timeout = 10 second
 
 
+  def processMessage:PartialFunction[(String, (String, String, Any)), Unit]
+
   def receive = {
-
-    case ProcessRawSocketData(sessionId, socketData) => {
-      val packet = Parser.decodePacket(socketData)
-
-      println(packet)
-
-      packet.packetType match {
-        case PacketTypes.CONNECT => {
-          self ! NotifyConnected(sessionId, packet.endpoint)
-        }
-
-        case PacketTypes.HEARTBEAT => {
-          /*do nothing */
-        }
-
-        case PacketTypes.MESSAGE => {
-          self! ReceiveMessage(sessionId, packet.endpoint, packet.data)
-        }
-
-        case PacketTypes.JSON => {
-          self ! ReceiveJsonMessage(sessionId, packet.endpoint, Json.parse(packet.data))
-        }
-
-        case PacketTypes.EVENT => {
-          val jdata:JsValue = Json.parse(packet.data)
-          self ! ReceiveEvent(sessionId, packet.endpoint, (jdata \ "name").asOpt[String].getOrElse("UNNAMED_EVENT"), jdata \ "args")
-        }
-
-        case PacketTypes.DISCONNECT => {
-          //self ! NotifyDisconnect(sessionId, packet.endpoint)
-        }
-
-      }
-
-    }
-
-
-    case NotifyConnected(sessionId, namespace) => {
-      sendPacket(sessionId, Packet(packetType = PacketTypes.CONNECT, endpoint = namespace))
-    }
 
     case Join(sessionId) => {
       println(sessionId)
@@ -132,47 +93,65 @@ class SocketIOActor extends Actor {
       }
     }
 
-    case ReceiveMessage(sessionId, namespace, msg) => {
-      println(sessionId + "---" + msg)
-      //DO your message processing here! Like saving the data
-      val id = math.round(math.random * 1000)
-      sendPacket(sessionId,
-          Packet(
-            packetType = PacketTypes.MESSAGE,
-            data = msg,
-            endpoint = namespace
-          )
-      )
+
+    case ProcessRawSocketData(sessionId, socketData) => {
+      val packet = Parser.decodePacket(socketData)
+
+      println(packet)
+
+      packet.packetType match {
+        case CONNECT => {
+          self ! NotifyConnected(sessionId, packet.endpoint)
+        }
+
+        case HEARTBEAT => {
+          /*do nothing */
+        }
+
+        case MESSAGE => {
+          self! ReceiveMessage(sessionId, packet.endpoint, packet.data)
+        }
+
+        case JSON => {
+          self ! ReceiveJsonMessage(sessionId, packet.endpoint, Json.parse(packet.data))
+        }
+
+        case EVENT => {
+          val jdata:JsValue = Json.parse(packet.data)
+          self ! ReceiveEvent(sessionId, packet.endpoint, (jdata \ "name").asOpt[String].getOrElse("UNNAMED_EVENT"), jdata \ "args")
+        }
+
+        case DISCONNECT => {
+          //self ! NotifyDisconnect(sessionId, packet.endpoint)
+        }
+
+      }
+
     }
+
+
+    case NotifyConnected(sessionId, namespace) => {
+      sendPacket(sessionId, Packet(packetType = CONNECT, endpoint = namespace))
+    }
+
+    case ReceiveMessage(sessionId, namespace, msg) => {
+      println("RECEIVED---" + sessionId + "---" + msg)
+      processMessage("message",(sessionId, namespace, msg))
+    }
+
 
     case ReceiveEvent(sessionId, namespace, eventName, eventData) => {
       println(sessionId + "---" + eventName + " -- " + eventData)
-      //DO your message processing here! Like saving the data
-      val id = math.round(math.random * 1000)
-      sendPacket(sessionId,
-          Packet(
-            packetType = PacketTypes.EVENT,
-            endpoint = namespace,
-            data = Json.stringify(Json.toJson(Map(
-                "name" -> Json.toJson(eventName),
-                "args" -> eventData
-              )
-            ))
-          )
-      )
+      processMessage(eventName, (sessionId, namespace, eventData))
     }
 
     case ReceiveJsonMessage(sessionId, namespace, json) => {
       println(sessionId + "---" + json)
-      //DO your message processing here! Like saving the data
-      val id = math.round(math.random * 1000)
-      sendPacket(sessionId,
-          Packet(
-            packetType = PacketTypes.JSON,
-            endpoint = namespace,
-            data = Json.stringify(json)
-          )
-      )
+      if(processMessage.isDefinedAt(("message", (sessionId, namespace, json)))){
+        processMessage("message", (sessionId, namespace, json))
+      }else{
+        processMessage("message", (sessionId, namespace, Json.stringify(json)))
+      }
     }
 
     case SendMessage(sessionId, packet) => {
@@ -181,12 +160,8 @@ class SocketIOActor extends Actor {
     }
 
     case Heartbeat(sessionId) => {
-      sendPacket(sessionId, Packet(packetType = PacketTypes.HEARTBEAT))
+      sendPacket(sessionId, Packet(packetType = HEARTBEAT))
     }
-
-    /* case NotifyDisconnect(sessionId, namespace) => {
-      sendPacket(sessionId, Packet(packetType = PacketTypes.DISCONNECT, endpoint = namespace))
-    }  */
 
     case Quit(sessionId) => {
       if (sessions.contains(sessionId)) {
@@ -200,9 +175,43 @@ class SocketIOActor extends Actor {
 
   }
 
+  //Helper method for easy send message                                                \
+  def send(sessionId:String, msg:String){
+    send(sessionId, "", msg)
+  }
+  def send(sessionId:String, namespace:String, msg:String){
+    sendPacket(sessionId, Packet(packetType = MESSAGE, endpoint = namespace, data = msg))
+  }
+
+  //Helper method for easy send Json message                                                \
+  def sendJson(sessionId:String, msg:JsValue){
+    sendJson(sessionId, "", msg)
+  }
+
+  def sendJson(sessionId:String, namespace:String, msg:JsValue){
+    sendPacket(sessionId, Packet(packetType = JSON, endpoint = namespace, data = Json.stringify(msg)))
+  }
+
+  //Helper method for easy emit event                                                \
+  def emit(sessionId:String, msg:String){
+    emit(sessionId, "", msg)
+  }
+
+  def emit(sessionId:String, namespace:String, msg:String){
+    sendPacket(sessionId, Packet(packetType = EVENT, endpoint = namespace, data = msg))
+  }
+
+  def emit(sessionId:String, msg:JsValue){
+    emit(sessionId, "", msg)
+  }
+
+  def emit(sessionId:String, namespace:String, msg:JsValue){
+    emit(sessionId, namespace, Json.stringify(msg))
+  }
+
+
   def sendPacket(sessionId:String, packet:Packet) {
-    println("Sending message -- " + packet)
-    val session = sessions.get(sessionId).get
+    val session = sessions.get(sessionId).get      //TODO: Should be getOrElse, sending non existing socket IO data to dead letter queue
     session.channel.push(Parser.encodePacket(packet))
     session.schedule.cancel()
     session.schedule = Akka.system.scheduler.scheduleOnce(timeout){
