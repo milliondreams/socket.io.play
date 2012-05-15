@@ -37,6 +37,7 @@ class MySocketIO extends SocketIOActor {
       println(sessionId + " in my Socket --- " + msg)
       //DO your message processing here! Like saving the msg
       send(sessionId, namespace, msg)
+      broadcast(namespace, msg)
     }
 
     //Process JSON message

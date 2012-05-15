@@ -106,6 +106,8 @@ trait SocketIOActor extends Actor {
 
         case HEARTBEAT => {
           /*do nothing */
+
+          //TODO: implement disconnect on haeartbeat failure
         }
 
         case MESSAGE => {
@@ -207,6 +209,14 @@ trait SocketIOActor extends Actor {
 
   def emit(sessionId:String, namespace:String, msg:JsValue){
     emit(sessionId, namespace, Json.stringify(msg))
+  }
+
+  //Implement broadcast
+  def broadcast(namespace:String, msg:String){
+    //TODO: Handle basic namespace restriction, i.e. the message should not be sent to clients/sessions that are not connected to that namespace
+    sessions.keySet.foreach({
+      send(_, namespace, msg)
+    })
   }
 
 
