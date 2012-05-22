@@ -1,4 +1,4 @@
-package controllers
+package socketio
 
 import akka.actor._
 import akka.util.duration._
