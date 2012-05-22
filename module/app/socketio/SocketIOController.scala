@@ -14,7 +14,6 @@ import play.api.Play.current
 
 import akka.util.Timeout
 import akka.pattern.ask
-import socketio.{Packet, PacketTypes, Parser}
 import socketio.PacketTypes._
 
 
