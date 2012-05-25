@@ -11,8 +11,7 @@ import play.api.libs.concurrent._
 import play.api.Play.current
 
 import socketio.{SocketIOController, SocketIOActor}
-import socketio.{PacketTypes, Packet}
-import socketio.PacketTypes._
+
 
 
 /**
