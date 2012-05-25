@@ -9,7 +9,7 @@ object ApplicationBuild extends Build {
 
     val appDependencies = Seq(
       // Add your project dependencies here,
-      "com.imaginea" %% "socket.io.play" % "0.0.2-SNAPSHOT"
+      "com.imaginea" %% "socket.io.play" % "0.0.3-SNAPSHOT"
     )
 
     val main = PlayProject(appName, appVersion, appDependencies, mainLang = SCALA).settings(

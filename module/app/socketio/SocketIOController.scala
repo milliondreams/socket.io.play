@@ -15,59 +15,80 @@ import play.api.Play.current
 import akka.util.Timeout
 import akka.pattern.ask
 import socketio.PacketTypes._
+import util.matching.Regex
 
 
 trait SocketIOController extends Controller {
 
-  val socketIOActor:ActorRef
+  val socketIOActor: ActorRef
 
   implicit val timeout = Timeout(10 second)
 
-  def init = Action {
+  val pRegex: Regex = """([^/?]+)?/?([^/?]+)?\??(.+)?""".r
+
+  def handler(socketUrl: String) = {
+    val pRegex(transport, sessionId, query) = socketUrl
+
+
+    Option(transport) match {
+      case None => initSession
+      case Some("websocket") => websocketSetup(sessionId)
+    }
+  }
+
+  def initSession = Action {
     val sessionId = java.util.UUID.randomUUID().toString()
     println(sessionId)
     Ok(sessionId + ":20:15:websocket")
   }
 
-  def socketSetup(sessionId: String) = WebSocket.async[String] {
+  def websocketSetup(sessionId: String) = WebSocket.async[String] {
     request =>
       (socketIOActor ? Join(sessionId)).asPromise.map {
 
         case ConnectionEstablished(enumerator) =>
 
-          println("ConnectionEstablished")
-          // Create an Iteratee to consume the feed
-          val iteratee = Iteratee.foreach[String] { socketData =>
-
-            println("Got this -- " + socketData)
-
-            socketIOActor ! ProcessRawSocketData(sessionId, socketData)
-
-          }.mapDone {
-            _ =>
-              println("Quit!!!")
-              socketIOActor ! Quit(sessionId)
-          }
-
-          socketIOActor ! NotifyConnected(sessionId, "")
-
-          (iteratee, enumerator)
+          HandleConnectionSetup(sessionId, enumerator)
 
         case NotifyConnectFailure(error) =>
 
-          // Connection error
-
-          // A finished Iteratee sending EOF
-          val iteratee = Done[String, Unit]((), Input.EOF)
-
-          // Send an error and close the socket
-          val enumerator = Enumerator[String](error).andThen(Enumerator.enumInput(Input.EOF))
-
-          (iteratee, enumerator)
+          handleConnectionFailure(error)
 
       }
   }
 
+  def HandleConnectionSetup(sessionId: String, enumerator: Enumerator[String]): (Iteratee[String, Unit], Enumerator[String]) = {
+    println("ConnectionEstablished")
+    // Create an Iteratee to consume the feed
+    val iteratee = Iteratee.foreach[String] {
+      socketData =>
+
+        println("Got this -- " + socketData)
+
+        socketIOActor ! ProcessRawSocketData(sessionId, socketData)
+
+    }.mapDone {
+      _ =>
+        println("Quit!!!")
+        socketIOActor ! Quit(sessionId)
+    }
+
+    socketIOActor ! NotifyConnected(sessionId, "")
+
+    (iteratee, enumerator)
+  }
+
+  def handleConnectionFailure(error: String): (Iteratee[String, Unit], Enumerator[String]) = {
+    // Connection error
+
+    // A finished Iteratee sending EOF
+    val iteratee = Done[String, Unit]((), Input.EOF)
+
+    // Send an error and close the socket
+    val enumerator = Enumerator[String](error).andThen(Enumerator.enumInput(Input.EOF))
+
+    (iteratee, enumerator)
+  }
 }
 
 trait SocketIOActor extends Actor {
@@ -76,7 +97,7 @@ trait SocketIOActor extends Actor {
   val timeout = 10 second
 
 
-  def processMessage:PartialFunction[(String, (String, String, Any)), Unit]
+  def processMessage: PartialFunction[(String, (String, String, Any)), Unit]
 
   def receive = {
 
@@ -110,7 +131,7 @@ trait SocketIOActor extends Actor {
         }
 
         case MESSAGE => {
-          self! ReceiveMessage(sessionId, packet.endpoint, packet.data)
+          self ! ReceiveMessage(sessionId, packet.endpoint, packet.data)
         }
 
         case JSON => {
@@ -118,7 +139,7 @@ trait SocketIOActor extends Actor {
         }
 
         case EVENT => {
-          val jdata:JsValue = Json.parse(packet.data)
+          val jdata: JsValue = Json.parse(packet.data)
           self ! ReceiveEvent(sessionId, packet.endpoint, (jdata \ "name").asOpt[String].getOrElse("UNNAMED_EVENT"), jdata \ "args")
         }
 
@@ -137,7 +158,7 @@ trait SocketIOActor extends Actor {
 
     case ReceiveMessage(sessionId, namespace, msg) => {
       println("RECEIVED---" + sessionId + "---" + msg)
-      processMessage("message",(sessionId, namespace, msg))
+      processMessage("message", (sessionId, namespace, msg))
     }
 
 
@@ -148,9 +169,9 @@ trait SocketIOActor extends Actor {
 
     case ReceiveJsonMessage(sessionId, namespace, json) => {
       println(sessionId + "---" + json)
-      if(processMessage.isDefinedAt(("message", (sessionId, namespace, json)))){
+      if (processMessage.isDefinedAt(("message", (sessionId, namespace, json)))) {
         processMessage("message", (sessionId, namespace, json))
-      }else{
+      } else {
         processMessage("message", (sessionId, namespace, Json.stringify(json)))
       }
     }
@@ -177,41 +198,42 @@ trait SocketIOActor extends Actor {
   }
 
   //Helper method for easy send message                                                \
-  def send(sessionId:String, msg:String){
+  def send(sessionId: String, msg: String) {
     send(sessionId, "", msg)
   }
-  def send(sessionId:String, namespace:String, msg:String){
+
+  def send(sessionId: String, namespace: String, msg: String) {
     sendPacket(sessionId, Packet(packetType = MESSAGE, endpoint = namespace, data = msg))
   }
 
   //Helper method for easy send Json message                                                \
-  def sendJson(sessionId:String, msg:JsValue){
+  def sendJson(sessionId: String, msg: JsValue) {
     sendJson(sessionId, "", msg)
   }
 
-  def sendJson(sessionId:String, namespace:String, msg:JsValue){
+  def sendJson(sessionId: String, namespace: String, msg: JsValue) {
     sendPacket(sessionId, Packet(packetType = JSON, endpoint = namespace, data = Json.stringify(msg)))
   }
 
   //Helper method for easy emit event                                                \
-  def emit(sessionId:String, msg:String){
+  def emit(sessionId: String, msg: String) {
     emit(sessionId, "", msg)
   }
 
-  def emit(sessionId:String, namespace:String, msg:String){
+  def emit(sessionId: String, namespace: String, msg: String) {
     sendPacket(sessionId, Packet(packetType = EVENT, endpoint = namespace, data = msg))
   }
 
-  def emit(sessionId:String, msg:JsValue){
+  def emit(sessionId: String, msg: JsValue) {
     emit(sessionId, "", msg)
   }
 
-  def emit(sessionId:String, namespace:String, msg:JsValue){
+  def emit(sessionId: String, namespace: String, msg: JsValue) {
     emit(sessionId, namespace, Json.stringify(msg))
   }
 
   //Implement broadcast
-  def broadcast(namespace:String, msg:String){
+  def broadcast(namespace: String, msg: String) {
     //TODO: Handle basic namespace restriction, i.e. the message should not be sent to clients/sessions that are not connected to that namespace
     sessions.keySet.foreach({
       send(_, namespace, msg)
@@ -219,11 +241,11 @@ trait SocketIOActor extends Actor {
   }
 
 
-  def sendPacket(sessionId:String, packet:Packet) {
-    val session = sessions.get(sessionId).get      //TODO: Should be getOrElse, sending non existing socket IO data to dead letter queue
+  def sendPacket(sessionId: String, packet: Packet) {
+    val session = sessions.get(sessionId).get //TODO: Should be getOrElse, sending non existing socket IO data to dead letter queue
     session.channel.push(Parser.encodePacket(packet))
     session.schedule.cancel()
-    session.schedule = Akka.system.scheduler.scheduleOnce(timeout){
+    session.schedule = Akka.system.scheduler.scheduleOnce(timeout) {
       self ! Heartbeat(sessionId)
     }
 
@@ -234,19 +256,19 @@ case class Join(sessionId: String)
 
 case class Heartbeat(sessionId: String)
 
-case class NotifyConnected(sessionId:String, namespace:String)
+case class NotifyConnected(sessionId: String, namespace: String)
 
-case class ReceiveMessage(sessionId:String, namespace:String, message:String)
+case class ReceiveMessage(sessionId: String, namespace: String, message: String)
 
-case class SendMessage(sessionId:String, packet:Packet)
+case class SendMessage(sessionId: String, packet: Packet)
 
-case class ReceiveJsonMessage(sessionId:String, namespace:String, message:JsValue)
+case class ReceiveJsonMessage(sessionId: String, namespace: String, message: JsValue)
 
-case class SendJsonMessage(sessionId:String, packet:Packet)
+case class SendJsonMessage(sessionId: String, packet: Packet)
 
-case class ReceiveEvent(sessionId:String, namespace:String, eventType:String, message:JsValue)
+case class ReceiveEvent(sessionId: String, namespace: String, eventType: String, message: JsValue)
 
-case class SendEvent(sessionId:String, packet:Packet)
+case class SendEvent(sessionId: String, packet: Packet)
 
 //case class NotifyDisconnect(sessionId:String, namespace:String)
 
@@ -256,6 +278,6 @@ case class NotifyConnectFailure(message: String)
 
 case class ConnectionEstablished(enumerator: Enumerator[String])
 
-case class SocketIOSession(val channel:PushEnumerator[String], var schedule:Cancellable)
+case class SocketIOSession(val channel: PushEnumerator[String], var schedule: Cancellable)
 
-case class ProcessRawSocketData(sessionId:String, socketData:String)
+case class ProcessRawSocketData(sessionId: String, socketData: String)

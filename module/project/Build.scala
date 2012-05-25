@@ -34,7 +34,7 @@ object ApplicationBuild extends Build {
         </developers>)
   )
     val appName         = "socket.io.play"
-    val appVersion      = "0.0.2-SNAPSHOT"
+    val appVersion      = "0.0.3-SNAPSHOT"
     val description     =
       """
          This Play module aims to bring the functionality of socket.io server to Play Framework 2.0.

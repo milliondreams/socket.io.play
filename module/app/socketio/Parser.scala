@@ -1,6 +1,7 @@
 package socketio
 
 import scala.collection.immutable.ListMap
+import util.matching.Regex
 
 /**
  * Created with IntelliJ IDEA.
@@ -60,16 +61,10 @@ object Advices {
 
 object Parser {
 
-  val regexp = """([^:]+):([0-9]+)?(\+)?:([^:]+)?:?([\s\S]*)?""".r;
+  val regexp:Regex = """([^:]+):([0-9]+)?(\+)?:([^:]+)?:?([\s\S]*)?""".r
 
   def decodePacket(data: String) = {
     val regexp(ptype, pid, pack, pendpoint, pdata) = data
-
-    val xPacketType = PacketTypes.list(ptype.toInt)
-    val xMsgId = Option(pid).getOrElse("0").toInt
-    val xAck = !(Option(pack).getOrElse("").isEmpty)
-    val xEndpoint = Option(pendpoint).getOrElse("")
-    val xData = Option(pdata).getOrElse("")
 
     Packet(
       packetType = PacketTypes.list(ptype.toInt),

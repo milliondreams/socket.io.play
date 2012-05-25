@@ -45,7 +45,7 @@ The easiest way to getting started would be to look at the sample app! But I wil
 1. Open your Build.scala and add the following to the dependencies
 
 ```
- "com.imaginea" %% "socket.io.play" % "0.0.2-SNAPSHOT"
+ "com.imaginea" %% "socket.io.play" % "0.0.3-SNAPSHOT"
 ```
 
 2. Create the actor that will handle the events. This actor should implement socketio.SocketIOActor
@@ -76,11 +76,10 @@ The easiest way to getting started would be to look at the sample app! But I wil
     }
 ```
 
-5. Go to your conf/routes file and add the socket.io configurtaion to it
+5. Go to your conf/routes file and add the socket.io route to it
 
 ```
-  GET     /socket.io/1/                          controllers.MySocketIOController.init
-  GET     /socket.io/1/websocket/:sessionId      controllers.MySocketIOController.socketSetup(sessionId)
+  GET     /socket.io/1/$socketUrl<.*>     controllers.MySocketIOController.handler(socketUrl)
 ```
 
 6. You are all set! Now you can start using socket.io JS client as you normally would.
