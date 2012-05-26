@@ -1,0 +1,8 @@
+Release 0.1.0 ([Apron Ray](http://en.wikipedia.org/wiki/Apron_ray))
+
+* Working for socket.io client over websockets transport
+* Implement the message/event handler as a Actor
+* Broadcast messages to all connected clients
+* Send messages or emit events from server similar to socket.io
+
+

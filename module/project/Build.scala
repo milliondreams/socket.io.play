@@ -37,8 +37,8 @@ object ApplicationBuild extends Build {
     val appVersion      = "0.0.3-SNAPSHOT"
     val description     =
       """
-         This Play module aims to bring the functionality of socket.io server to Play Framework 2.0.
-         Currently, this supports socket.io over websockets.
+         socket.io.play is a play module that provides a easy way to build the server component
+         for socket.io in your Play! 2.0 application.
       """.stripMargin
 
     val appDependencies = Seq(
