@@ -90,15 +90,13 @@ Create a new issue in [github issues](https://github.com/rohit-tingendab/socket.
 
 ## I couldn't get it to run, or I got an error trying to run it!
 
-Mail on the Play! Framework 2.0 mailing list, tagging it with [socketio4play] in subject. You can also tweet to @milliondreams with #socketio4play hashtag or create a new issue.
+Mail me - rohit [at] tingendab (dot) com mentioning socket.io.play in the subject. You can also tweet to @milliondreams with #socketio4play hashtag or create a new issue.
 
 ## This is great! I want to use it on my project!
 
 Glad that you like it, go ahead and use it. It is licensed under Apache License, Version 2.0 and you are free to use it. If possible put a mail to us, *opensource* at *imaginea* dot com.
 
-## I need paid support!
 
-Mail *opensource* at *imaginea* dot com and we should be able to help.
 
 
 
