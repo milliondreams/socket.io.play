@@ -42,19 +42,27 @@ Somewhat ordered by priority -
 
 The easiest way to getting started would be to look at the sample app! But I will list down the steps here. Assuming you already have a Play! Application
 
-1. Open your Build.scala and add the following to the dependencies
+* Add Sonatype OSS repo to your Play framework
+
+```scala
+  val main = PlayProject(appName, appVersion, appDependencies, mainLang = SCALA).settings(
+    resolvers += "OSS Repo" at "https://oss.sonatype.org/content/repositories/snapshots"
+  )
+```
+
+* Open your Build.scala and add the following to the dependencies
 
 ```
  "com.imaginea" %% "socket.io.play" % "0.0.3-SNAPSHOT"
 ```
 
-2. Create the actor that will handle the events. This actor should implement socketio.SocketIOActor
+* Create the actor that will handle the events. This actor should implement socketio.SocketIOActor
 
 ```scala
  class MySocketIO extends SocketIOActor
 ```
 
-3. Now, you need to implement the partial function, 'processMessage' which will handle the event.
+* Now, you need to implement the partial function, 'processMessage' which will handle the event.
 
 ```scala
     def processMessage: PartialFunction[(String, (String, String, Any)), Unit] = {
@@ -66,7 +74,7 @@ The easiest way to getting started would be to look at the sample app! But I wil
 ```
 
 
-4. Create a controller extending SocketIOController and set the socketIOActor in it
+* Create a controller extending SocketIOController and set the socketIOActor in it
 
 ```scala
     object MySocketIOController extends SocketIOController {
@@ -76,13 +84,13 @@ The easiest way to getting started would be to look at the sample app! But I wil
     }
 ```
 
-5. Go to your conf/routes file and add the socket.io route to it
+* Go to your conf/routes file and add the socket.io route to it
 
 ```
   GET     /socket.io/1/$socketUrl<.*>     controllers.MySocketIOController.handler(socketUrl)
 ```
 
-6. You are all set! Now you can start using socket.io JS client as you normally would.
+* You are all set! Now you can start using socket.io JS client as you normally would.
 
 ## I found a bug! What to do?
 
