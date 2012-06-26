@@ -154,6 +154,7 @@ trait SocketIOActor extends Actor {
 
     case NotifyConnected(sessionId, namespace) => {
       sendPacket(sessionId, Packet(packetType = CONNECT, endpoint = namespace))
+      processMessage("connected", (sessionId, namespace, ""))
     }
 
     case ReceiveMessage(sessionId, namespace, msg) => {

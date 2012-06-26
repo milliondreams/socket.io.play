@@ -15,6 +15,7 @@ object ApplicationBuild extends Build {
     val main = PlayProject(appName, appVersion, appDependencies, mainLang = SCALA).settings(
       // Add your own project settings here      
       // resolvers += "Local Play Repository" at "file://home/rohit/.ivy2/local"
+      resolvers += "OSS Repo" at "https://oss.sonatype.org/content/repositories/snapshots"
     )
 
 }
