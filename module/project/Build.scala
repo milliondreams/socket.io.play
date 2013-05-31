@@ -1,6 +1,6 @@
 import sbt._
 import Keys._
-import PlayProject._
+import play.Project._
 
 object ApplicationBuild extends Build {
 
@@ -33,20 +33,23 @@ object ApplicationBuild extends Build {
           </developer>
         </developers>)
   )
-    val appName         = "socket.io.play"
-    val appVersion      = "0.0.3-SNAPSHOT"
-    val description     =
-      """
-         socket.io.play is a play module that provides a easy way to build the server component
-         for socket.io in your Play! 2.0 application.
-      """.stripMargin
 
-    val appDependencies = Seq(
-      // Add your project dependencies here,
-    )
+  val appName         = "socket-io-play"
+  val appVersion      = "0.0.3-SNAPSHOT"
+  val description     =
+    """
+       socket.io.play is a play module that provides a easy way to build the server component
+       for socket.io in your Play! 2.0 application.
+    """.stripMargin
 
-    val main = PlayProject(appName, appVersion, appDependencies, mainLang = SCALA).settings(
-      // Add your own project settings here      
-    )
+  val appDependencies = Seq(
+    // Add your project dependencies here,
+  )
+
+  val main = play.Project(appName, appVersion, appDependencies).settings(
+    // Add your own project settings here      
+  )
 
 }
+
+

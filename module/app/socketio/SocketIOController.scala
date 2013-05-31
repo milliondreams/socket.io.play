@@ -1,21 +1,23 @@
 package socketio
 
-import akka.actor._
-import akka.util.duration._
+import scala.concurrent._
+import scala.concurrent.duration._
+import scala.util.matching.Regex
 
 import play.api._
-import play.api.mvc._
 import play.api.libs.json._
 import play.api.libs.json.JsValue
 import play.api.libs.iteratee._
 import play.api.libs.concurrent._
-
+import play.api.libs.concurrent.Execution.Implicits._
+import play.api.mvc._
 import play.api.Play.current
 
-import akka.util.Timeout
+import akka.actor._
 import akka.pattern.ask
+import akka.util.Timeout
+
 import socketio.PacketTypes._
-import util.matching.Regex
 
 
 trait SocketIOController extends Controller {
@@ -29,7 +31,6 @@ trait SocketIOController extends Controller {
   def handler(socketUrl: String) = {
     val pRegex(transport, sessionId, query) = socketUrl
 
-
     Option(transport) match {
       case None => initSession
       case Some("websocket") => websocketSetup(sessionId)
@@ -42,22 +43,19 @@ trait SocketIOController extends Controller {
     Ok(sessionId + ":20:15:websocket")
   }
 
-  def websocketSetup(sessionId: String) = WebSocket.async[String] {
+  def websocketSetup (sessionId: String) = WebSocket.async[String] {
     request =>
-      (socketIOActor ? Join(sessionId)).asPromise.map {
-
+      (socketIOActor ? Join(sessionId)).map {
         case ConnectionEstablished(enumerator) =>
-
-          HandleConnectionSetup(sessionId, enumerator)
+          handleConnectionSetup(sessionId, enumerator)
 
         case NotifyConnectFailure(error) =>
-
           handleConnectionFailure(error)
-
       }
   }
 
-  def HandleConnectionSetup(sessionId: String, enumerator: Enumerator[String]): (Iteratee[String, Unit], Enumerator[String]) = {
+  def handleConnectionSetup (sessionId: String, enumerator: Enumerator[String]):
+  (Iteratee[String, Unit], Enumerator[String]) = {
     println("ConnectionEstablished")
     // Create an Iteratee to consume the feed
     val iteratee = Iteratee.foreach[String] {
@@ -78,7 +76,7 @@ trait SocketIOController extends Controller {
     (iteratee, enumerator)
   }
 
-  def handleConnectionFailure(error: String): (Iteratee[String, Unit], Enumerator[String]) = {
+  def handleConnectionFailure (error: String): (Iteratee[String, Unit], Enumerator[String]) = {
     // Connection error
 
     // A finished Iteratee sending EOF
@@ -96,7 +94,6 @@ trait SocketIOActor extends Actor {
   var sessions = Map.empty[String, SocketIOSession]
   val timeout = 10 second
 
-
   def processMessage: PartialFunction[(String, (String, String, Any)), Unit]
 
   def receive = {
@@ -112,7 +109,6 @@ trait SocketIOActor extends Actor {
         sender ! ConnectionEstablished(channel)
       }
     }
-
 
     case ProcessRawSocketData(sessionId, socketData) => {
       val packet = Parser.decodePacket(socketData)
@@ -150,7 +146,6 @@ trait SocketIOActor extends Actor {
       }
 
     }
-
 
     case NotifyConnected(sessionId, namespace) => {
       sendPacket(sessionId, Packet(packetType = CONNECT, endpoint = namespace))
@@ -241,7 +236,6 @@ trait SocketIOActor extends Actor {
     })
   }
 
-
   def sendPacket(sessionId: String, packet: Packet) {
     val session = sessions.get(sessionId).get //TODO: Should be getOrElse, sending non existing socket IO data to dead letter queue
     session.channel.push(Parser.encodePacket(packet))
@@ -282,3 +276,6 @@ case class ConnectionEstablished(enumerator: Enumerator[String])
 case class SocketIOSession(val channel: PushEnumerator[String], var schedule: Cancellable)
 
 case class ProcessRawSocketData(sessionId: String, socketData: String)
+
+
+
