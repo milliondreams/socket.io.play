@@ -1,8 +1,8 @@
 package socketio
 
 import akka.actor._
-import akka.util.duration._
-
+//import akka.util.duration._
+import scala.concurrent.duration._
 import play.api._
 import play.api.mvc._
 import play.api.libs.json._
@@ -15,8 +15,8 @@ import play.api.Play.current
 import akka.util.Timeout
 import akka.pattern.ask
 import socketio.PacketTypes._
-import util.matching.Regex
-
+import scala.util.matching.Regex
+import play.api.libs.concurrent.Execution.Implicits._
 
 trait SocketIOController extends Controller {
 
@@ -33,6 +33,7 @@ trait SocketIOController extends Controller {
     Option(transport) match {
       case None => initSession
       case Some("websocket") => websocketSetup(sessionId)
+      case _	=> throw new Exception("Unable to match transport")
     }
   }
 
@@ -43,8 +44,10 @@ trait SocketIOController extends Controller {
   }
 
   def websocketSetup(sessionId: String) = WebSocket.async[String] {
-    request =>
-      (socketIOActor ? Join(sessionId)).asPromise.map {
+    request => {
+      val socketIoActFuture = socketIOActor.ask(Join(sessionId))
+      
+      socketIoActFuture.map( {
 
         case ConnectionEstablished(enumerator) =>
 
@@ -54,7 +57,8 @@ trait SocketIOController extends Controller {
 
           handleConnectionFailure(error)
 
-      }
+      })
+    }
   }
 
   def HandleConnectionSetup(sessionId: String, enumerator: Enumerator[String]): (Iteratee[String, Unit], Enumerator[String]) = {
