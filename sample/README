@@ -4,13 +4,13 @@ HOW TO USE THIS TEMPLATE
 
 * install sbt 0.11.2  if you do not have it already. You can get it from here: https://github.com/harrah/xsbt/wiki/Getting-Started-Setup
 
-* execute 'sbt' and then `help play` for play specific commands
+* execute `sbt` in the socket.io.play dierctory and then `compile` followed by `publish-local` and exit 
 
-* execute `sbt` and then `compile` to build the project
+* execute `sbt` in the sample directory and then `compile` to build the project
 
-* execute `sbt` and then 'run' to run the built-in development server
+* Then 'run' to run the built-in development server at http://localhost:9000/
 
-* onece the development server is running, documentation is available at http://localhost:9000/@documentation
+
 
 
 
