@@ -3,7 +3,8 @@
 @main("Welcome to Play 2.0") {
 
     <div><ul id="messages"></ul></div>
-    <script type="text/javascript"  src="@routes.Assets.at("socket.io/dist/socket.io.js")"></script>
+    @*<script type="text/javascript"  src="@routes.Assets.at("socket.io/dist/socket.io.js")"></script>*@
+    <script type="text/javascript"  src="//cdnjs.cloudflare.com/ajax/libs/socket.io/0.9.16/socket.io.min.js"></script>
 
     <input type="button" name="Connect" value="Connect" id="connectBtn" />
     <input type="button" name="Disconnect" value="Disconnect" id="disconnectBtn" />
