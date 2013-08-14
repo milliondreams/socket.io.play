@@ -16,6 +16,7 @@ import play.api.Play.current
 import akka.actor._
 import akka.pattern.ask
 import akka.util.Timeout
+import com.typesafe.config.ConfigFactory
 
 import socketio.PacketTypes._
 
@@ -102,14 +103,14 @@ class SocketIOActor extends Actor {
         processMessage("connected", (sessionId, namespace, ""))
       }
     }
-  }))
+  }).withRouter(FromConfig()), "connectHandler")
   
   val heartbeatHandler = context.actorOf(Props(new Actor {
     def receive = {
       case Heartbeat(sessionId) => {
         packetSender ! SendPacket(sessionId, Packet(packetType = HEARTBEAT))        }
       }
-  }))
+  }).withRouter(FromConfig()), "heartbeatHandler")
 
   val messageHandler = context.actorOf(Props(new Actor {
     def receive = {
@@ -118,7 +119,7 @@ class SocketIOActor extends Actor {
         processMessage("message", (sessionId, namespace, msg))
       }
     }
-  }))
+  }).withRouter(FromConfig()), "messageHandler")
 
   val jsonHandler = context.actorOf(Props(new Actor {
     def receive = {
@@ -132,7 +133,7 @@ class SocketIOActor extends Actor {
       }
 
     }
-  }))
+  }).withRouter(FromConfig()), "jsonHandler")
 
   val eventHandler = context.actorOf(Props(new Actor {
     def receive = {
@@ -141,7 +142,7 @@ class SocketIOActor extends Actor {
         processMessage(eventName, (sessionId, namespace, eventData))
       }
     }
-  }))
+  }).withRouter(FromConfig()), "eventHandler")
 
   val packetSender = context.actorOf(Props(new Actor {
     def receive = {
@@ -155,7 +156,7 @@ class SocketIOActor extends Actor {
 
       }
     }
-  }))
+  }).withRouter(FromConfig()), "packetSender")
 
   def processMessage: PartialFunction[(String, (String, String, Any)), Unit]
 
