@@ -16,7 +16,7 @@ import play.api.Play.current
 import akka.actor._
 import akka.pattern.ask
 import akka.util.Timeout
-import com.typesafe.config.ConfigFactory
+import akka.routing._
 
 import socketio.PacketTypes._
 
@@ -91,7 +91,7 @@ trait SocketIOController extends Controller {
   }
 }
 
-class SocketIOActor extends Actor {
+trait SocketIOActor extends Actor {
 
   var sessions = Map.empty[String, SocketIOSession]
   val timeout = 10 second
@@ -144,7 +144,7 @@ class SocketIOActor extends Actor {
     }
   }).withRouter(FromConfig()), "eventHandler")
 
-  val packetSender = context.actorOf(Props(new Actor {
+  val packetSender: ActorRef = context.actorOf(Props(new Actor {
     def receive = {
       case SendPacket(sessionId: String, packet: Packet) => {
         val session = sessions.get(sessionId).get //TODO: Should be getOrElse, sending non existing socket IO data to dead letter queue
