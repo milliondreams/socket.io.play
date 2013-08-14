@@ -34,7 +34,7 @@ trait SocketIOController extends Controller {
     Option(transport) match {
       case None => initSession
       case Some("websocket") => websocketSetup(sessionId)
-      case _	=> throw new Exception("Unable to match transport")
+      case _  => throw new Exception("Unable to match transport")
     }
   }
 
@@ -90,10 +90,72 @@ trait SocketIOController extends Controller {
   }
 }
 
-trait SocketIOActor extends Actor {
+class SocketIOActor extends Actor {
 
   var sessions = Map.empty[String, SocketIOSession]
   val timeout = 10 second
+
+  val connectHandler = context.actorOf(Props(new Actor {
+    def receive = {
+      case NotifyConnected(sessionId, namespace) => {
+        packetSender ! SendPacket(sessionId, Packet(packetType = CONNECT, endpoint = namespace))
+        processMessage("connected", (sessionId, namespace, ""))
+      }
+    }
+  }))
+  
+  val heartbeatHandler = context.actorOf(Props(new Actor {
+    def receive = {
+      case Heartbeat(sessionId) => {
+        packetSender ! SendPacket(sessionId, Packet(packetType = HEARTBEAT))        }
+      }
+  }))
+
+  val messageHandler = context.actorOf(Props(new Actor {
+    def receive = {
+      case ReceiveMessage(sessionId, namespace, msg) => {
+        println("RECEIVED---" + sessionId + "---" + msg)          
+        processMessage("message", (sessionId, namespace, msg))
+      }
+    }
+  }))
+
+  val jsonHandler = context.actorOf(Props(new Actor {
+    def receive = {
+      case ReceiveJsonMessage(sessionId, namespace, json) => {
+        println(sessionId + "---" + json)
+        if (processMessage.isDefinedAt(("message", (sessionId, namespace, json)))) {
+          processMessage("message", (sessionId, namespace, json))
+        } else {
+          processMessage("message", (sessionId, namespace, Json.stringify(json)))
+        }
+      }
+
+    }
+  }))
+
+  val eventHandler = context.actorOf(Props(new Actor {
+    def receive = {
+      case ReceiveEvent(sessionId, namespace, eventName, eventData) => {
+        println(sessionId + "---" + eventName + " -- " + eventData)
+        processMessage(eventName, (sessionId, namespace, eventData))
+      }
+    }
+  }))
+
+  val packetSender = context.actorOf(Props(new Actor {
+    def receive = {
+      case SendPacket(sessionId: String, packet: Packet) => {
+        val session = sessions.get(sessionId).get //TODO: Should be getOrElse, sending non existing socket IO data to dead letter queue
+        session.channel.push(Parser.encodePacket(packet))
+        session.schedule.cancel()
+        session.schedule = Akka.system.scheduler.scheduleOnce(timeout) {
+          heartbeatHandler ! Heartbeat(sessionId)
+        }
+
+      }
+    }
+  }))
 
   def processMessage: PartialFunction[(String, (String, String, Any)), Unit]
 
@@ -105,7 +167,7 @@ trait SocketIOActor extends Actor {
       if (sessions.contains(sessionId)) {
         sender ! NotifyConnectFailure(Json.stringify(Json.toJson(Map("error" -> "Invalid Session ID"))))
       } else {
-        val heartbeatSchedule = Akka.system.scheduler.scheduleOnce(timeout, self, Heartbeat(sessionId))
+        val heartbeatSchedule = Akka.system.scheduler.scheduleOnce(timeout, heartbeatHandler, Heartbeat(sessionId))
         sessions = sessions + (sessionId -> SocketIOSession(channel, heartbeatSchedule))
         sender ! ConnectionEstablished(channel)
       }
@@ -118,7 +180,7 @@ trait SocketIOActor extends Actor {
 
       packet.packetType match {
         case CONNECT => {
-          self ! NotifyConnected(sessionId, packet.endpoint)
+          connectHandler ! NotifyConnected(sessionId, packet.endpoint)
         }
 
         case HEARTBEAT => {
@@ -128,16 +190,16 @@ trait SocketIOActor extends Actor {
         }
 
         case MESSAGE => {
-          self ! ReceiveMessage(sessionId, packet.endpoint, packet.data)
+          messageHandler ! ReceiveMessage(sessionId, packet.endpoint, packet.data)
         }
 
         case JSON => {
-          self ! ReceiveJsonMessage(sessionId, packet.endpoint, Json.parse(packet.data))
+          jsonHandler ! ReceiveJsonMessage(sessionId, packet.endpoint, Json.parse(packet.data))
         }
 
         case EVENT => {
           val jdata: JsValue = Json.parse(packet.data)
-          self ! ReceiveEvent(sessionId, packet.endpoint, (jdata \ "name").asOpt[String].getOrElse("UNNAMED_EVENT"), jdata \ "args")
+          eventHandler ! ReceiveEvent(sessionId, packet.endpoint, (jdata \ "name").asOpt[String].getOrElse("UNNAMED_EVENT"), jdata \ "args")
         }
 
         case DISCONNECT => {
@@ -147,39 +209,10 @@ trait SocketIOActor extends Actor {
       }
 
     }
-
-    case NotifyConnected(sessionId, namespace) => {
-      sendPacket(sessionId, Packet(packetType = CONNECT, endpoint = namespace))
-      processMessage("connected", (sessionId, namespace, ""))
-    }
-
-    case ReceiveMessage(sessionId, namespace, msg) => {
-      println("RECEIVED---" + sessionId + "---" + msg)
-      processMessage("message", (sessionId, namespace, msg))
-    }
-
-
-    case ReceiveEvent(sessionId, namespace, eventName, eventData) => {
-      println(sessionId + "---" + eventName + " -- " + eventData)
-      processMessage(eventName, (sessionId, namespace, eventData))
-    }
-
-    case ReceiveJsonMessage(sessionId, namespace, json) => {
-      println(sessionId + "---" + json)
-      if (processMessage.isDefinedAt(("message", (sessionId, namespace, json)))) {
-        processMessage("message", (sessionId, namespace, json))
-      } else {
-        processMessage("message", (sessionId, namespace, Json.stringify(json)))
-      }
-    }
-
+    
     case SendMessage(sessionId, packet) => {
       println("Sending connect response -- " + packet)
-      sendPacket(sessionId, packet)
-    }
-
-    case Heartbeat(sessionId) => {
-      sendPacket(sessionId, Packet(packetType = HEARTBEAT))
+      packetSender ! SendPacket(sessionId, packet)
     }
 
     case Quit(sessionId) => {
@@ -200,7 +233,7 @@ trait SocketIOActor extends Actor {
   }
 
   def send(sessionId: String, namespace: String, msg: String) {
-    sendPacket(sessionId, Packet(packetType = MESSAGE, endpoint = namespace, data = msg))
+    packetSender ! SendPacket(sessionId, Packet(packetType = MESSAGE, endpoint = namespace, data = msg))
   }
 
   //Helper method for easy send Json message                                                \
@@ -209,7 +242,7 @@ trait SocketIOActor extends Actor {
   }
 
   def sendJson(sessionId: String, namespace: String, msg: JsValue) {
-    sendPacket(sessionId, Packet(packetType = JSON, endpoint = namespace, data = Json.stringify(msg)))
+    packetSender ! SendPacket(sessionId, Packet(packetType = JSON, endpoint = namespace, data = Json.stringify(msg)))
   }
 
   //Helper method for easy emit event                                                \
@@ -218,7 +251,7 @@ trait SocketIOActor extends Actor {
   }
 
   def emit(sessionId: String, namespace: String, msg: String) {
-    sendPacket(sessionId, Packet(packetType = EVENT, endpoint = namespace, data = msg))
+    packetSender ! SendPacket(sessionId, Packet(packetType = EVENT, endpoint = namespace, data = msg))
   }
 
   def emit(sessionId: String, msg: JsValue) {
@@ -237,15 +270,7 @@ trait SocketIOActor extends Actor {
     })
   }
 
-  def sendPacket(sessionId: String, packet: Packet) {
-    val session = sessions.get(sessionId).get //TODO: Should be getOrElse, sending non existing socket IO data to dead letter queue
-    session.channel.push(Parser.encodePacket(packet))
-    session.schedule.cancel()
-    session.schedule = Akka.system.scheduler.scheduleOnce(timeout) {
-      self ! Heartbeat(sessionId)
-    }
-
-  }
+  
 }
 
 case class Join(sessionId: String)
@@ -265,6 +290,8 @@ case class SendJsonMessage(sessionId: String, packet: Packet)
 case class ReceiveEvent(sessionId: String, namespace: String, eventType: String, message: JsValue)
 
 case class SendEvent(sessionId: String, packet: Packet)
+
+case class SendPacket(sessionId: String, packet: Packet)
 
 //case class NotifyDisconnect(sessionId:String, namespace:String)
 
