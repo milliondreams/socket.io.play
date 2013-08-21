@@ -11,9 +11,6 @@ import play.api.Play.current
 
 import akka.actor._
 
-import socketio.{SocketIOController, SocketIOActor}
-
-
 /**
  * Created with IntelliJ IDEA.
  * User: rohit
@@ -23,49 +20,28 @@ import socketio.{SocketIOController, SocketIOActor}
  */
 
 object MySocketIOController extends SocketIOController {
-  lazy val socketIOActor: ActorRef = {
-    Akka.system.actorOf(Props[MySocketIO])
-  }
-}
 
-
-class MySocketIO extends SocketIOActor {
-  def processMessage: PartialFunction[(String, (String, String, Any)), Unit] = {
+  def processMessage: PartialFunction[(String, (String, String, Any)), String] = {
 
     //Process regular message
     case ("message", (sessionId: String, namespace: String, msg: String)) => {
-      println(sessionId + " in my Socket --- " + msg)
+      println("Processed request for sessionId: " + msg)
       //DO your message processing here! Like saving the msg
-      send(sessionId, namespace, msg)
-      broadcast(namespace, msg)
+      //send(sessionId, namespace, msg)
+      //broadcast(namespace, msg)
+      "Processed request for sessionId: " + msg
     }
 
     //Process JSON message
     case ("message", (sessionId: String, namespace: String, msg: JsValue)) => {
-      println(sessionId + " handling JSON message in my Socket --- " + Json.stringify(msg))
-      sendJson(sessionId, namespace, msg)
+      println("Processed request for sessionId: " + Json.stringify(msg))
+      "Processed request for sessionId: " + msg
     }
 
     //Handle event
-    case ("someEvt", (sessionId: String, namespace: String, eventData: JsValue)) => {
-      println(sessionId + " handling Event in my Socket --- " + Json.stringify(eventData))
-      emit(sessionId, namespace,
-        Json.stringify(
-          Json.toJson(Map(
-            "name" -> Json.toJson("someEvt"),
-            "args" -> eventData
-          )
-          )
-        )
-      )
-
+    case ("event", (sessionId: String, namespace: String, eventData: JsValue)) => {
+      println("Processed request for sessionId: " + eventData)
+      "Processed request for sessionId: " + eventData
     }
-
-    case ("connected", (sessionId: String, namespace: String, msg: String)) =>{
-      println("New session created . .  .")
-      send(sessionId, "welcome");
-
-    }
-
   }
 }
