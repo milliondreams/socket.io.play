@@ -19,7 +19,6 @@ import akka.util.Timeout
 
 import PacketTypes._
 
-
 trait SocketIOController extends Controller {
 
   val xhrMap = collection.mutable.Map.empty[String, ActorRef]
@@ -34,8 +33,8 @@ trait SocketIOController extends Controller {
 
     Option(transport) match {
       case None => initSession
-      case Some("xhr-polling") => println(socketUrl + " " + transport); println("Request came to xhr block."); xhrHandler(sessionId)
-      case _	=> throw new Exception("Unable to match transport")
+      case Some("xhr-polling") => xhrHandler(sessionId)
+      case _ => throw new Exception("Unable to match transport")
     }
   }
 
@@ -47,44 +46,37 @@ trait SocketIOController extends Controller {
     xhrMap(sessionId) ! Enqueue(Parser.encodePacket(Packet(packetType = EVENT, endpoint = "", data = event)))
   }
 
-  def enqueueJsonMsg(sessionId: String, msg: String) =  {
+  def enqueueJsonMsg(sessionId: String, msg: String) = {
     xhrMap(sessionId) ! Enqueue(Parser.encodePacket(Packet(packetType = JSON, endpoint = "", data = msg)))
   }
 
   def initSession = Action {
     val sessionId = java.util.UUID.randomUUID().toString()
-    println("Strating new session: " + sessionId)
     val xhrActor = Akka.system.actorOf(Props(new XHRActor(processMessage)))
+    System.err.println("Strating new session: " + sessionId)
     xhrMap += (sessionId -> xhrActor)
     Ok(sessionId + ":60:60:xhr-polling")
   }
 
-  def xhrHandler (sessionId: String) = Action { implicit request =>
-
+  def xhrHandler(sessionId: String) = Action { implicit request =>
     if (xhrMap contains sessionId) {
       val body: AnyContent = request.body
       body.asText match {
-        case None => {
-          Async {
-              println("Request came to get block.")
-              val res = ask(xhrMap(sessionId), EventOrNoop())
-              res.map { x: Any =>
-              Ok(x.toString)
-            } 
+        case None => Async {
+          val res = (xhrMap(sessionId) ? EventOrNoop)
+          res.map { x: Any =>
+            Ok(x.toString)
           }
         }
-        case Some(x) => {
-          Async {
-              println("Request came to post block.")
-              val res = ask(xhrMap(sessionId), ProcessPacket(x))
-              res.map { x: Any =>
-              Ok(x.toString)
-            } 
+
+        case Some(x) => Async {
+          val res = ask(xhrMap(sessionId), ProcessPacket(x))
+          res.map { x: Any =>
+            Ok(x.toString)
           }
         }
       }
     } else {
-      println("Request came to exit block.")
       Ok("0::")
     }
   }
@@ -100,7 +92,7 @@ class XHRActor(val processMessage: PartialFunction[(String, (String, String, Any
   }
 
   def beforeConnected: Receive = {
-    case _ =>
+    case x =>
       sender ! "1::"
       context.become(afterConnected orElse enqueue)
   }
@@ -110,39 +102,40 @@ class XHRActor(val processMessage: PartialFunction[(String, (String, String, Any
     case EventOrNoop => {
       val s = sender
       eventQueue match {
-        case x::xs => eventQueue = xs; s ! x
-        case Nil => println("noop sent."); s ! "8::"
+        case x :: xs =>
+          eventQueue = xs; s ! x
+        case Nil => context.system.scheduler.scheduleOnce(8.seconds, s, "8::")
       }
-      
+
     }
 
     case ProcessPacket(socketData) => {
       val s = sender
       val packet = Parser.decodePacket(socketData)
-      println(packet)
 
       packet.packetType match {
-        
+
         case HEARTBEAT => {
           eventQueue match {
-            case x::xs => eventQueue = xs; s ! x
-            case Nil => s ! "8::"
+            case x :: xs =>
+              eventQueue = xs; s ! x
+            case Nil => context.system.scheduler.scheduleOnce(8.seconds, s, "8::")
           }
         }
-        
+
         case MESSAGE => {
           s ! "Processed request for sessionId: " + packet.data
         }
-        
+
         case JSON => {
           s ! "Processed request for sessionId: " + packet.data
         }
-        
+
         case EVENT => {
           val jdata: JsValue = Json.parse(packet.data)
           s ! "Processed request for sessionId: " + (jdata \ "args")
         }
-        
+
         case DISCONNECT => {
           s ! "0::"
         }
@@ -151,7 +144,7 @@ class XHRActor(val processMessage: PartialFunction[(String, (String, String, Any
   }
 }
 
-case class EventOrNoop()
+case object EventOrNoop
 
 case class ProcessPacket(x: String)
 
