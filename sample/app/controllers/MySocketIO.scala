@@ -11,6 +11,8 @@ import play.api.Play.current
 
 import akka.actor._
 
+import PacketTypes._
+
 /**
  * Created with IntelliJ IDEA.
  * User: rohit
@@ -21,27 +23,41 @@ import akka.actor._
 
 object MySocketIOController extends SocketIOController {
 
-  def processMessage: PartialFunction[(String, (String, String, Any)), String] = {
+  def processMessage(sessionId: String, packet: Packet) {
 
-    //Process regular message
-    case ("message", (sessionId: String, namespace: String, msg: String)) => {
-      println("Processed request for sessionId: " + msg)
-      //DO your message processing here! Like saving the msg
-      //send(sessionId, namespace, msg)
-      //broadcast(namespace, msg)
-      "Processed request for sessionId: " + msg
+    packet.packetType match {
+      //Process regular message
+      case (MESSAGE) => {
+        println("Processed request for sessionId: " + packet.data)
+        //DO your message processing here
+        Enqueue("Processed request for sessionId: " + packet.data)
+      }
+
+      //Process JSON message
+      case (JSON) => {
+        println("Processed request for sessionId: " + packet.data)
+        //
+        Enqueue("Processed request for sessionId: " + packet.data)
+      }
+
+      //Handle event
+      case (EVENT) => {
+        println("Processed request for sessionId: " + packet.data)
+        // "Processed request for sessionId: " + eventData
+        val parsedData: JsValue = Json.parse(packet.data)
+        (parsedData \ "name").asOpt[String] match {
+          case Some("my other event") => {
+            val data = parsedData \ "args"
+            //process data
+            println(""""my other event" just happened for client: """ + sessionId + " data sent: " + data)
+            enqueueJsonMsg(sessionId, "Processed request for sessionId: " + data)
+          }
+          case _ => 
+            println("Unkown event happened.")
+        } 
+      }
+
     }
 
-    //Process JSON message
-    case ("message", (sessionId: String, namespace: String, msg: JsValue)) => {
-      println("Processed request for sessionId: " + Json.stringify(msg))
-      "Processed request for sessionId: " + msg
-    }
-
-    //Handle event
-    case ("event", (sessionId: String, namespace: String, eventData: JsValue)) => {
-      println("Processed request for sessionId: " + eventData)
-      "Processed request for sessionId: " + eventData
-    }
   }
 }

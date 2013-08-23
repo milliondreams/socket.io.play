@@ -22,7 +22,7 @@ import PacketTypes._
 trait SocketIOController extends Controller {
 
   val xhrMap = collection.mutable.Map.empty[String, ActorRef]
-  def processMessage: PartialFunction[(String, (String, String, Any)), String]
+  def processMessage(sessionId: String, packet: Packet): Unit
 
   implicit val timeout = Timeout(10 second)
 
@@ -47,14 +47,15 @@ trait SocketIOController extends Controller {
   }
 
   def enqueueJsonMsg(sessionId: String, msg: String) = {
-    xhrMap(sessionId) ! Enqueue(Parser.encodePacket(Packet(packetType = JSON, endpoint = "", data = msg)))
+    xhrMap(sessionId) ! Enqueue(Parser.encodePacket(Packet(packetType = PacketTypes.JSON, endpoint = "", data = msg)))
   }
 
   def initSession = Action {
     val sessionId = java.util.UUID.randomUUID().toString()
-    val xhrActor = Akka.system.actorOf(Props(new XHRActor(processMessage)))
+    val xhrActor = Akka.system.actorOf(Props(new XHRActor(processMessage, xhrMap)))
     System.err.println("Strating new session: " + sessionId)
     xhrMap += (sessionId -> xhrActor)
+    enqueueEvent(sessionId, """{"name":"news","args":[{"hello":"world"}]}""")
     Ok(sessionId + ":60:60:xhr-polling")
   }
 
@@ -82,14 +83,22 @@ trait SocketIOController extends Controller {
   }
 }
 
-class XHRActor(val processMessage: PartialFunction[(String, (String, String, Any)), String]) extends Actor {
+class XHRActor(val processMessage: (String, Packet) => Unit, val xhrMap: collection.mutable.Map[String, ActorRef]) extends Actor {
   var eventQueue = List.empty[String]
 
-  def receive = beforeConnected orElse enqueue
-
   def enqueue: Receive = {
-    case Enqueue(x) => eventQueue :+ x
+    case Enqueue(x) => eventQueue = eventQueue :+ x
   }
+
+  def sendEventOrNoop(s: ActorRef) {
+    eventQueue match {
+      case x :: xs =>
+        eventQueue = xs; s ! x
+      case Nil => context.system.scheduler.scheduleOnce(8.seconds, s, "8::")
+    }
+  }
+
+  def receive = enqueue orElse beforeConnected
 
   def beforeConnected: Receive = {
     case x =>
@@ -101,12 +110,7 @@ class XHRActor(val processMessage: PartialFunction[(String, (String, String, Any
 
     case EventOrNoop => {
       val s = sender
-      eventQueue match {
-        case x :: xs =>
-          eventQueue = xs; s ! x
-        case Nil => context.system.scheduler.scheduleOnce(8.seconds, s, "8::")
-      }
-
+      sendEventOrNoop(s)
     }
 
     case ProcessPacket(socketData) => {
@@ -114,31 +118,20 @@ class XHRActor(val processMessage: PartialFunction[(String, (String, String, Any
       val packet = Parser.decodePacket(socketData)
 
       packet.packetType match {
-
-        case HEARTBEAT => {
-          eventQueue match {
-            case x :: xs =>
-              eventQueue = xs; s ! x
-            case Nil => context.system.scheduler.scheduleOnce(8.seconds, s, "8::")
-          }
-        }
-
-        case MESSAGE => {
-          s ! "Processed request for sessionId: " + packet.data
-        }
-
-        case JSON => {
-          s ! "Processed request for sessionId: " + packet.data
-        }
-
-        case EVENT => {
-          val jdata: JsValue = Json.parse(packet.data)
-          s ! "Processed request for sessionId: " + (jdata \ "args")
-        }
-
         case DISCONNECT => {
           s ! "0::"
         }
+
+        case HEARTBEAT => {
+          sendEventOrNoop(s)
+        }
+
+        case _ => {
+          val sessionId = xhrMap.find((p: (String, ActorRef)) => p._2 == self).get._1
+          processMessage(sessionId, packet)
+          sendEventOrNoop(s)
+        }
+
       }
     }
   }
