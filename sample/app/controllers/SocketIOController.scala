@@ -1,13 +1,8 @@
 package controllers
 
-import scala.concurrent._
 import scala.concurrent.duration._
 import scala.util.matching.Regex
 
-import play.api._
-import play.api.libs.json._
-import play.api.libs.json.JsValue
-import play.api.libs.iteratee._
 import play.api.libs.concurrent._
 import play.api.libs.concurrent.Execution.Implicits._
 import play.api.mvc._
@@ -22,6 +17,7 @@ import PacketTypes._
 trait SocketIOController extends Controller {
 
   val xhrMap = collection.mutable.Map.empty[String, ActorRef]
+
   def processMessage(sessionId: String, packet: Packet): Unit
 
   implicit val timeout = Timeout(10 second)
@@ -50,8 +46,14 @@ trait SocketIOController extends Controller {
     xhrMap(sessionId) ! Enqueue(Parser.encodePacket(Packet(packetType = PacketTypes.JSON, endpoint = "", data = msg)))
   }
 
+  def broadcastMsg(msg: String) = xhrMap.keysIterator.foreach(enqueueMsg(_, msg))
+
+  def broadcastEvent(event: String) = xhrMap.keysIterator.foreach(enqueueEvent(_, event))
+
+  def broadcastJsonMsg(msg: String) = xhrMap.keysIterator.foreach(enqueueJsonMsg(_, msg))
+
   def initSession = Action {
-    val sessionId = java.util.UUID.randomUUID().toString()
+    val sessionId = java.util.UUID.randomUUID().toString
     val xhrActor = Akka.system.actorOf(Props(new XHRActor(processMessage, xhrMap)))
     System.err.println("Strating new session: " + sessionId)
     xhrMap += (sessionId -> xhrActor)
@@ -59,27 +61,30 @@ trait SocketIOController extends Controller {
     Ok(sessionId + ":60:60:xhr-polling")
   }
 
-  def xhrHandler(sessionId: String) = Action { implicit request =>
-    if (xhrMap contains sessionId) {
-      val body: AnyContent = request.body
-      body.asText match {
-        case None => Async {
-          val res = (xhrMap(sessionId) ? EventOrNoop)
-          res.map { x: Any =>
-            Ok(x.toString)
+  def xhrHandler(sessionId: String) = Action {
+    implicit request =>
+      if (xhrMap contains sessionId) {
+        val body: AnyContent = request.body
+        body.asText match {
+          case None => Async {
+            val res = xhrMap(sessionId) ? EventOrNoop
+            res.map {
+              x: Any =>
+                Ok(x.toString)
+            }
           }
-        }
 
-        case Some(x) => Async {
-          val res = ask(xhrMap(sessionId), ProcessPacket(x))
-          res.map { x: Any =>
-            Ok(x.toString)
+          case Some(x) => Async {
+            val res = ask(xhrMap(sessionId), ProcessPacket(x))
+            res.map {
+              x: Any =>
+                Ok(x.toString)
+            }
           }
         }
+      } else {
+        Ok("0::")
       }
-    } else {
-      Ok("0::")
-    }
   }
 }
 
@@ -92,9 +97,18 @@ class XHRActor(val processMessage: (String, Packet) => Unit, val xhrMap: collect
 
   def sendEventOrNoop(s: ActorRef) {
     eventQueue match {
+
       case x :: xs =>
         eventQueue = xs; s ! x
-      case Nil => context.system.scheduler.scheduleOnce(8.seconds, s, "8::")
+
+      case Nil => context.system.scheduler.scheduleOnce(8.seconds) {
+        eventQueue match {
+          case x :: xs =>
+            eventQueue = xs; s ! x
+          case Nil => s ! "8::"
+
+        }
+      }
     }
   }
 

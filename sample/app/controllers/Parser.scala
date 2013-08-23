@@ -11,7 +11,7 @@ import util.matching.Regex
  * To change this template use File | Settings | File Templates.
  */
 
-case class Packet(val packetType: String="", val msgId: Int = 0, val ack: Boolean = false, val endpoint: String = "", val data: String = "")
+case class Packet(packetType: String = "", msgId: Int = 0, ack: Boolean = false, endpoint: String = "", data: String = "")
 
 object PacketTypes {
   final val DISCONNECT = "disconnect"
@@ -44,7 +44,7 @@ object Reasons {
   val map = Map[String, Int](
     "transport not supported" -> 0,
     "client not handshaken" -> 1,
-    "unauthorized" -> 2);
+    "unauthorized" -> 2)
 
   val list: Array[String] = map.keySet.toArray
 
@@ -61,21 +61,21 @@ object Advices {
 
 object Parser {
 
-  val regexp:Regex = """([^:]+):([0-9]+)?(\+)?:([^:]+)?:?([\s\S]*)?""".r
+  val regexp: Regex = """([^:]+):([0-9]+)?(\+)?:([^:]+)?:?([\s\S]*)?""".r
 
   def decodePacket(data: String) = {
     println("incoming: " + data)
-      val regexp(ptype, pid, pack, pendpoint, pdata) = data
-      Packet(
-        packetType = PacketTypes.list(ptype.toInt),
-        msgId = Option(pid).getOrElse("0").toInt,
-        ack = !(Option(pack).getOrElse("").isEmpty),
-        endpoint = Option(pendpoint).getOrElse(""),
-        data = Option(pdata).getOrElse(""))
+    val regexp(ptype, pid, pack, pendpoint, pdata) = data
+    Packet(
+      packetType = PacketTypes.list(ptype.toInt),
+      msgId = Option(pid).getOrElse("0").toInt,
+      ack = !(Option(pack).getOrElse("").isEmpty),
+      endpoint = Option(pendpoint).getOrElse(""),
+      data = Option(pdata).getOrElse(""))
   }
 
-  def encodePacket(packet:Packet) = {
-    val msgId:String = if(packet.msgId != 0)  packet.msgId.toString() else ""
+  def encodePacket(packet: Packet) = {
+    val msgId: String = if (packet.msgId != 0) packet.msgId.toString else ""
 
     PacketTypes.map(packet.packetType) + ":" + msgId + ":" + packet.endpoint + ":" + packet.data
   }
