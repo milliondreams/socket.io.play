@@ -67,7 +67,7 @@ trait SocketIOController extends Controller {
   def initSession = Action {
     val sessionId = java.util.UUID.randomUUID().toString
     System.err.println("Strating new session: " + sessionId)
-    Ok(sessionId + ":20:15:websocket")
+    Ok(sessionId + ":20:15:xhr-polling")
   }
 
   def wsHandler(sessionId: String) = WebSocket.using[String] {
@@ -265,3 +265,9 @@ class WSActor(channel: PushEnumerator[String], processMessage: (String, Packet) 
     }
   }
 }
+
+case object EventOrNoop
+
+case class ProcessPacket(x: String)
+
+case class Enqueue(x: String)
