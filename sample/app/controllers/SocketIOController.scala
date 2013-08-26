@@ -40,34 +40,38 @@ trait SocketIOController extends Controller {
     }
   }
 
-  def enqueueMsg(sessionId: String, msg: String) = {
+  def enqueueMsg(sessionId: String, msg: String) = enqueue(sessionId, MESSAGE, msg)
+
+  def enqueueEvent(sessionId: String, event: String) = enqueue(sessionId, EVENT, event)
+
+  def enqueueJsonMsg(sessionId: String, msg: String) = enqueue(sessionId, PacketTypes.JSON, msg)
+
+  def enqueue(sessionId: String, payload: String, payloadType: String) {
     if (wsMap contains sessionId)
-      wsMap(sessionId) ! Enqueue(Parser.encodePacket(Packet(packetType = MESSAGE, endpoint = "", data = msg)))
-    else
-      xhrMap(sessionId) ! Enqueue(Parser.encodePacket(Packet(packetType = MESSAGE, endpoint = "", data = msg)))
+      wsMap(sessionId) ! Enqueue(Parser.encodePacket(Packet(packetType = payloadType, endpoint = "", data = payload)))
+    else if (xhrMap contains sessionId)
+      xhrMap(sessionId) ! Enqueue(Parser.encodePacket(Packet(packetType = payloadType, endpoint = "", data = payload)))
   }
 
-  def enqueueEvent(sessionId: String, event: String) = {
-    if (wsMap contains sessionId)
-      wsMap(sessionId) ! Enqueue(Parser.encodePacket(Packet(packetType = EVENT, endpoint = "", data = event)))
-    else
-      xhrMap(sessionId) ! Enqueue(Parser.encodePacket(Packet(packetType = EVENT, endpoint = "", data = event)))
+  def broadcastMsg(msg: String) = {
+    xhrMap.keysIterator.foreach(enqueueMsg(_, msg))
+    wsMap.keysIterator.foreach(enqueueMsg(_, msg))
   }
 
-  def enqueueJsonMsg(sessionId: String, msg: String) = {
-    xhrMap(sessionId) ! Enqueue(Parser.encodePacket(Packet(packetType = PacketTypes.JSON, endpoint = "", data = msg)))
+  def broadcastEvent(event: String) = {
+    xhrMap.keysIterator.foreach(enqueueEvent(_, event))
+    wsMap.keysIterator.foreach(enqueueEvent(_, event))
   }
 
-  def broadcastMsg(msg: String) = xhrMap.keysIterator.foreach(enqueueMsg(_, msg))
-
-  def broadcastEvent(event: String) = xhrMap.keysIterator.foreach(enqueueEvent(_, event))
-
-  def broadcastJsonMsg(msg: String) = xhrMap.keysIterator.foreach(enqueueJsonMsg(_, msg))
+  def broadcastJsonMsg(msg: String) = {
+    xhrMap.keysIterator.foreach(enqueueJsonMsg(_, msg))
+    wsMap.keysIterator.foreach(enqueueJsonMsg(_, msg))
+  }
 
   def initSession = Action {
     val sessionId = java.util.UUID.randomUUID().toString
     System.err.println("Strating new session: " + sessionId)
-    Ok(sessionId + ":20:15:websocket")
+    Ok(sessionId + ":20:15:websocket,xhr-polling")
   }
 
   def wsHandler(sessionId: String) = WebSocket.using[String] {
