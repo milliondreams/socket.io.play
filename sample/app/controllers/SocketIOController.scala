@@ -67,7 +67,7 @@ trait SocketIOController extends Controller {
   def initSession = Action {
     val sessionId = java.util.UUID.randomUUID().toString
     System.err.println("Strating new session: " + sessionId)
-    Ok(sessionId + ":20:15:xhr-polling")
+    Ok(sessionId + ":20:15:websocket")
   }
 
   def wsHandler(sessionId: String) = WebSocket.using[String] {
@@ -244,7 +244,6 @@ class WSActor(channel: PushEnumerator[String], processMessage: (String, Packet) 
 
       packet.packetType match {
         case DISCONNECT => {
-          channel.push("0::")
           channel.close()
           wsMap.remove {
             wsMap.find((p: (String, ActorRef)) => p._2 == self).get._1
