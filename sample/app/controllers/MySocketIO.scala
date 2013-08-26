@@ -4,29 +4,30 @@ package controllers
 import play.api.libs.json._
 
 
-import PacketTypes._
-
 object MySocketIOController extends SocketIOController {
 
   def processMessage(sessionId: String, packet: Packet) {
-
     packet.packetType match {
       //Process regular message
-      case (MESSAGE) => {
+      case ("message") => {
         println("Processed request for sessionId: " + packet.data)
         //DO your message processing here
         Enqueue("Processed request for sessionId: " + packet.data)
       }
 
+      case ("connect") => {
+        println("Processed request for sessionId: " + packet.data)
+      }
+
       //Process JSON message
-      case (JSON) => {
+      case ("json") => {
         println("Processed request for sessionId: " + packet.data)
         //
         Enqueue("Processed request for sessionId: " + packet.data)
       }
 
       //Handle event
-      case (EVENT) => {
+      case ("event") => {
         println("Processed request for sessionId: " + packet.data)
         // "Processed request for sessionId: " + eventData
         val parsedData: JsValue = Json.parse(packet.data)

@@ -67,17 +67,15 @@ trait SocketIOController extends Controller {
   def initSession = Action {
     val sessionId = java.util.UUID.randomUUID().toString
     System.err.println("Strating new session: " + sessionId)
-    //    enqueueEvent(sessionId, """{"name":"news","args":[{"hello":"world"}]}""")
     Ok(sessionId + ":20:15:websocket")
   }
 
   def wsHandler(sessionId: String) = WebSocket.using[String] {
     implicit request =>
-      println("Request came to websocket block")
       if (wsMap contains sessionId) {
         handleConnectionFailure(Json.stringify(Json.toJson(Map("error" -> "Invalid Session ID"))))
       } else {
-        println("creating new websocket session")
+        println("creating new websocket actor")
         val channel = Enumerator.imperative[String]()
         val wsActor = Akka.system.actorOf(Props(new WSActor(channel, processMessage, wsMap)))
         wsMap += (sessionId -> wsActor)
@@ -87,14 +85,12 @@ trait SocketIOController extends Controller {
 
   def handleConnectionSetup(sessionId: String, enumerator: Enumerator[String]):
   (Iteratee[String, Unit], Enumerator[String]) = {
-    println("ConnectionEstablished")
-    // Create an Iteratee to consume the feed
     val iteratee = Iteratee.foreach[String] {
       socketData =>
         wsMap(sessionId) ! ProcessPacket(socketData)
     }.mapDone {
       _ =>
-        println("Quit!!!")
+        println("all done quit.")
     }
     wsMap(sessionId) ! EventOrNoop
     (iteratee, enumerator)
@@ -158,7 +154,7 @@ class XHRActor(val processMessage: (String, Packet) => Unit, val xhrMap: collect
     eventQueue match {
       case x :: xs =>
         eventQueue = xs; s ! x
-      case Nil => context.system.scheduler.scheduleOnce(8.seconds) {
+      case Nil => context.system.scheduler.scheduleOnce(10.seconds) {
         eventQueue match {
           case x :: xs =>
             eventQueue = xs; s ! x
@@ -208,12 +204,6 @@ class XHRActor(val processMessage: (String, Packet) => Unit, val xhrMap: collect
   }
 }
 
-case object EventOrNoop
-
-case class ProcessPacket(x: String)
-
-case class Enqueue(x: String)
-
 class WSActor(channel: PushEnumerator[String], processMessage: (String, Packet) => Unit, wsMap: collection.mutable.Map[String, ActorRef]) extends Actor {
 
   var eventQueue = List.empty[String]
@@ -229,18 +219,17 @@ class WSActor(channel: PushEnumerator[String], processMessage: (String, Packet) 
         channel.push(x)
       }
 
-      case Nil => context.system.scheduler.scheduleOnce(10.seconds) {
-        channel.push("2::")
-      }
+      case Nil => channel.push("2::")
     }
   }
+
 
   def receive = enqueue orElse beforeConnected
 
   def beforeConnected: Receive = {
     case x =>
-      channel.push("1:::")
-      //      context.system.scheduler.schedule(10.seconds, 10.seconds, self, EventOrNoop)
+      channel.push("1::")
+      context.system.scheduler.schedule(10.seconds, 10.seconds, self, EventOrNoop)
       context.become(afterConnected orElse enqueue)
   }
 
@@ -256,10 +245,14 @@ class WSActor(channel: PushEnumerator[String], processMessage: (String, Packet) 
       packet.packetType match {
         case DISCONNECT => {
           channel.push("0::")
+          channel.close()
+          wsMap.remove {
+            wsMap.find((p: (String, ActorRef)) => p._2 == self).get._1
+          }
+          context.stop(self)
         }
 
         case HEARTBEAT => {
-          sendEventOrNoop
         }
 
         case _ => {
