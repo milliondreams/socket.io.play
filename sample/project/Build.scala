@@ -11,7 +11,7 @@ object ApplicationBuild extends Build {
     // Add your project dependencies here,
     jdbc,
     anorm
-//     "com.imaginea" % "socket-io-play_2.10" % "0.0.3-SNAPSHOT"
+     "com.imaginea" % "socket-io-play_2.10" % "0.0.3-SNAPSHOT"
   )
 
 

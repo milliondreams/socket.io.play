@@ -2,7 +2,7 @@ package controllers
 
 
 import play.api.libs.json._
-
+import socketio._
 
 object MySocketIOController extends SocketIOController {
 
