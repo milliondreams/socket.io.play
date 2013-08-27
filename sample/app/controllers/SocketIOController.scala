@@ -1,6 +1,5 @@
 package controllers
 
-
 import scala.concurrent.duration._
 import scala.util.matching.Regex
 
@@ -10,7 +9,6 @@ import play.api.libs.concurrent._
 import play.api.libs.concurrent.Execution.Implicits._
 import play.api.mvc._
 import play.api.Play.current
-
 
 import akka.actor._
 import akka.pattern.ask
