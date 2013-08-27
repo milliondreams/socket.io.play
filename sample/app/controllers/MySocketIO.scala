@@ -8,42 +8,32 @@ object MySocketIOController extends SocketIOController {
 
   def processMessage(sessionId: String, packet: Packet) {
     packet.packetType match {
-      //Process regular message
-      case ("message") => {
+
+      case ("message") =>
         println("Processed request for sessionId: " + packet.data)
-        //DO your message processing here
         Enqueue("Processed request for sessionId: " + packet.data)
-      }
 
-      case ("connect") => {
+      case ("connect") =>
         println("Processed request for sessionId: " + packet.data)
-      }
 
-      //Process JSON message
-      case ("json") => {
+      case ("json") =>
         println("Processed request for sessionId: " + packet.data)
-        //
         Enqueue("Processed request for sessionId: " + packet.data)
-      }
 
-      //Handle event
-      case ("event") => {
+      case ("event") =>
         println("Processed request for sessionId: " + packet.data)
-        // "Processed request for sessionId: " + eventData
         val parsedData: JsValue = Json.parse(packet.data)
         (parsedData \ "name").asOpt[String] match {
-          case Some("my other event") => {
+          case Some("my other event") =>
             val data = parsedData \ "args"
-            //process data
             println( """"my other event" just happened for client: """ + sessionId + " data sent: " + data)
             enqueueJsonMsg(sessionId, "Processed request for sessionId: " + data)
-          }
+
           case _ =>
             println("Unkown event happened.")
         }
-      }
-
     }
 
   }
+
 }

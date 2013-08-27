@@ -156,14 +156,11 @@ class XHRActor(val processMessage: (String, Packet) => Unit, val xhrMap: collect
 
   def sendEventOrNoop(s: ActorRef) {
     eventQueue match {
-      case x :: xs =>
-        eventQueue = xs; s ! x
+      case x :: xs => eventQueue = xs; s ! x
       case Nil => context.system.scheduler.scheduleOnce(10.seconds) {
         eventQueue match {
-          case x :: xs =>
-            eventQueue = xs; s ! x
+          case x :: xs => eventQueue = xs; s ! x
           case Nil => s ! "8::"
-
         }
       }
     }
@@ -189,19 +186,18 @@ class XHRActor(val processMessage: (String, Packet) => Unit, val xhrMap: collect
       val packet = Parser.decodePacket(socketData)
 
       packet.packetType match {
-        case DISCONNECT => {
+        case DISCONNECT =>
           s ! "0::"
-        }
+          context.stop(self)
 
-        case HEARTBEAT => {
-          sendEventOrNoop(s)
-        }
+        case HEARTBEAT => sendEventOrNoop(s)
 
-        case _ => {
-          val sessionId = xhrMap.find((p: (String, ActorRef)) => p._2 == self).get._1
+        case _ =>
+          val sessionId = xhrMap.find {
+            case (_, y) => y == self
+          }.get._1
           processMessage(sessionId, packet)
           sendEventOrNoop(s)
-        }
 
       }
     }
@@ -210,59 +206,41 @@ class XHRActor(val processMessage: (String, Packet) => Unit, val xhrMap: collect
 
 class WSActor(channel: PushEnumerator[String], processMessage: (String, Packet) => Unit, wsMap: collection.mutable.Map[String, ActorRef]) extends Actor {
 
-  var eventQueue = List.empty[String]
-
   def enqueue: Receive = {
-    case Enqueue(x) => eventQueue = eventQueue :+ x
+    case Enqueue(x) => channel.push(x)
   }
 
-  def sendEventOrNoop {
-    eventQueue match {
-      case x :: xs => {
-        eventQueue = xs
-        channel.push(x)
-      }
+  def sendBeat = channel.push("2::")
 
-      case Nil => channel.push("2::")
-    }
-  }
-
-
-  def receive = enqueue orElse beforeConnected
+  def receive = beforeConnected
 
   def beforeConnected: Receive = {
-    case x =>
+    case _ =>
       channel.push("1::")
-      context.system.scheduler.schedule(10.seconds, 10.seconds, self, EventOrNoop)
+      context.system.scheduler.schedule(10.seconds, 10.seconds)(sendBeat)
       context.become(afterConnected orElse enqueue)
   }
 
   def afterConnected: Receive = {
 
-    case EventOrNoop => {
-      sendEventOrNoop
-    }
-
     case ProcessPacket(socketData) => {
       val packet = Parser.decodePacket(socketData)
 
       packet.packetType match {
-        case DISCONNECT => {
+        case DISCONNECT =>
           channel.close()
           wsMap.remove {
             wsMap.find((p: (String, ActorRef)) => p._2 == self).get._1
           }
           context.stop(self)
-        }
 
-        case HEARTBEAT => {
-        }
+        case HEARTBEAT => {}
 
-        case _ => {
-          val sessionId = wsMap.find((p: (String, ActorRef)) => p._2 == self).get._1
+        case _ =>
+          val sessionId = wsMap.find {
+            case (_, y) => y == self
+          }.get._1
           processMessage(sessionId, packet)
-          sendEventOrNoop
-        }
 
       }
     }
