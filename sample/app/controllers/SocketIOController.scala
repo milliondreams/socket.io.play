@@ -155,7 +155,7 @@ class XHRActor(val processMessage: (String, Packet) => Unit, val xhrMap: collect
   def sendEventOrNoop(s: ActorRef) {
     eventQueue match {
       case x :: xs => eventQueue = xs; s ! x
-      case Nil => context.system.scheduler.scheduleOnce(10.seconds) {
+      case Nil => context.system.scheduler.scheduleOnce(9.seconds) {
         eventQueue match {
           case x :: xs => eventQueue = xs; s ! x
           case Nil => s ! "8::"
