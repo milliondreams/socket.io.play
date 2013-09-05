@@ -4,21 +4,20 @@ import play.Project._
 
 object ApplicationBuild extends Build {
 
-    val appName         = "socket-io-play-sample"
-    val appVersion      = "1.0"
+  val appName         = "socketio"
+  val appVersion      = "1.0-SNAPSHOT"
 
-    val appDependencies = Seq(
-      // Add your project dependencies here,
-      "com.imaginea" %% "socket-io-play" % "0.0.3-SNAPSHOT"
-    )
+  val appDependencies = Seq(
+    // Add your project dependencies here,
+    jdbc,
+    anorm
+     "com.imaginea" % "socket-io-play_2.10" % "0.0.3-SNAPSHOT"
+  )
 
-    val main = play.Project(appName, appVersion, appDependencies).settings(
-      // Add your own project settings here      
-      // resolvers += "Local Play Repository" at "file://home/rohit/.ivy2/local"
-      resolvers += "OSS Repo" at "https://oss.sonatype.org/content/repositories/snapshots"
-    )
+
+  val main = play.Project(appName, appVersion, appDependencies).settings(
+    // Add your own project settings here  
+    
+  )
 
 }
-
-
-

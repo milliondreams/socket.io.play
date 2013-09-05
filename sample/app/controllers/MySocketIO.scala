@@ -1,71 +1,39 @@
 package controllers
 
-import scala.concurrent.duration._
 
-import play.api._
-import play.api.mvc._
 import play.api.libs.json._
-import play.api.libs.iteratee._
-import play.api.libs.concurrent._
-import play.api.Play.current
-
-import akka.actor._
-
-import socketio.{SocketIOController, SocketIOActor}
-
-
-/**
- * Created with IntelliJ IDEA.
- * User: rohit
- * Date: 5/14/12
- * Time: 10:11 AM
- * To change this template use File | Settings | File Templates.
- */
+import socketio._
 
 object MySocketIOController extends SocketIOController {
-  lazy val socketIOActor: ActorRef = {
-    Akka.system.actorOf(Props[MySocketIO])
-  }
-}
 
+  def processMessage(sessionId: String, packet: Packet) {
+    packet.packetType match {
 
-class MySocketIO extends SocketIOActor {
-  def processMessage: PartialFunction[(String, (String, String, Any)), Unit] = {
+      case ("message") =>
+        println("Processed request for sessionId: " + packet.data)
+        Enqueue("Processed request for sessionId: " + packet.data)
 
-    //Process regular message
-    case ("message", (sessionId: String, namespace: String, msg: String)) => {
-      println(sessionId + " in my Socket --- " + msg)
-      //DO your message processing here! Like saving the msg
-      send(sessionId, namespace, msg)
-      broadcast(namespace, msg)
-    }
+      case ("connect") =>
+        println("Processed request for sessionId: " + packet.data)
 
-    //Process JSON message
-    case ("message", (sessionId: String, namespace: String, msg: JsValue)) => {
-      println(sessionId + " handling JSON message in my Socket --- " + Json.stringify(msg))
-      sendJson(sessionId, namespace, msg)
-    }
+      case ("json") =>
+        println("Processed request for sessionId: " + packet.data)
+        Enqueue("Processed request for sessionId: " + packet.data)
 
-    //Handle event
-    case ("someEvt", (sessionId: String, namespace: String, eventData: JsValue)) => {
-      println(sessionId + " handling Event in my Socket --- " + Json.stringify(eventData))
-      emit(sessionId, namespace,
-        Json.stringify(
-          Json.toJson(Map(
-            "name" -> Json.toJson("someEvt"),
-            "args" -> eventData
-          )
-          )
-        )
-      )
+      case ("event") =>
+        println("Processed request for sessionId: " + packet.data)
+        val parsedData: JsValue = Json.parse(packet.data)
+        (parsedData \ "name").asOpt[String] match {
+          case Some("my other event") =>
+            val data = parsedData \ "args"
+            println( """"my other event" just happened for client: """ + sessionId + " data sent: " + data)
+            enqueueJsonMsg(sessionId, "Processed request for sessionId: " + data)
 
-    }
-
-    case ("connected", (sessionId: String, namespace: String, msg: String)) =>{
-      println("New session created . .  .")
-      send(sessionId, "welcome");
-
+          case _ =>
+            println("Unkown event happened.")
+        }
     }
 
   }
+
 }
