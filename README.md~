@@ -77,22 +77,13 @@ You have these functions to enqueue events/messages to clients:
     def broadcastJsonMsg(msg: String)
 ```
 
-* Go to your conf/routes file and add the socket.io route to it
+You get a sessionId in the processMessage, you can maintain a sessionId container and process events specific to clients.
 
+* Go to your conf/routes file and add the socket.io route to it
 ```scala
   GET     /socket.io/1/$socketUrl<.*>     controllers.MySocketIOController.handler(socketUrl)
 ```
-
 * That's it. Now you can start using socket.io clients as you normally would.
-
-
-### Note:
-
-* There is a parser available to you, all the events/messages that you enqueue are supposed to be already encoded strings.
-  Use encodePacket from Parser. See sample app for details.
-
-* You get a sessionId in the processMessage, you can maintain a sessionId container and process events specific to clients.
-
 
 ## I found a bug
 
