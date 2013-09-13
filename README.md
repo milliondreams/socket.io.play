@@ -30,6 +30,8 @@ The easiest way to getting started would be to look at the sample app.
 
 Manual Steps:
 
+The below mentioned repo might not be updated, so it's best to compile and publish locally.
+
 * Add Sonatype OSS repo to your Play framework
 
 ```scala
