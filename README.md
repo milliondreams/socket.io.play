@@ -10,10 +10,8 @@ From [socket.io site](http://socket.io/)
 > Socket.IO aims to make realtime apps possible in every browser and mobile device, blurring the differences between the different transport mechanisms. It's care-free realtime 100% in JavaScript.
 >
 
-## Aim
+## Features
 
-Provide socket.io protocol implementation so your socket.io clients can talk to you Play application.
-Current State - 
 
 * Support for Websocket transport for modern browsers
 * Support for xhr-handling for everything else
