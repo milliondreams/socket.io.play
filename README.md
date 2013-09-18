@@ -104,13 +104,10 @@ Please report it in github issues
 
 Mail -
 
-rohit@tingendab.com 
-
-or me saurabh.rawat90@gmail.com
+saurabh.rawat90@gmail.com
 
 Please mention socket.io.play in the subject.
 
-You can also tweet to @milliondreams with #socketio4play hashtag or create a new issue.
 
 ## This is great! I want to use it on my project!
 
