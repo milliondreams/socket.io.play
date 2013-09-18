@@ -1,46 +1,34 @@
 # socket.io for Play! Framework 2.0 (for Scala)
 
-First a couple of questions, which you would already know about if you are reading this! ;)
+Socket.io server sode support for Play framework.
 
 ## What is socket.io?
 
-socket.io provides browser independent bidirectional realtime socket-like communication between server ad browser.
+socket.io provides browser independent bidirectional realtime socket-like communication between server ad browser. 
 From [socket.io site](http://socket.io/)
 >
 > Socket.IO aims to make realtime apps possible in every browser and mobile device, blurring the differences between the different transport mechanisms. It's care-free realtime 100% in JavaScript.
 >
 
-## What does this project aim todo?
+## Features
 
-I aim to make it dead simple to make socket.io server side component to work with the standard (unmoddified) soccket.io JS client library.
-This means a developer should be able to focus on writing the logic for his/her application rather than having to deal with the nitty grities of the protocol.
 
-## What is the current state of this project?
+* Support for Websocket transport for modern browsers
+* Support for xhr-handling for everything else
+* Push events/messages to clients, respond to client side events/messages
+* Dead clients time out
 
-This project is in its *very initial days* and I am working on it *whenever I get time* to. That *doesn't* mean there is nothing here!
+## TODO
 
-I am able to currently use the library successfully (see the sample app).
-
-* The socket.io packet parsing and event handling is implemented
-* There is basic support for broadcast
-* Only transport layer supported is websockets (that means *modern* browsers only)
-
-## What is on your todo list?
-
-Somewhat ordered by priority -
-
-* Implement XHR polling and json polling for transport
 * Get feedback and freeze the API
-* Code cleanup/review/reorganization
-* Sample application (chat or something else?)
-* Code and usage documentation
-* Test cases
-* Implement flashsocket for transport
-* Support Play! for Java
 
-## How do I use this?
+## How To Use
 
-The easiest way to getting started would be to look at the sample app! But I will list down the steps here. Assuming you already have a Play! Application
+The easiest way to getting started would be to look at the sample app.
+
+Manual Steps:
+
+The below mentioned repo might not be updated, so it's best to compile and publish locally.
 
 * Add Sonatype OSS repo to your Play framework
 
@@ -49,62 +37,78 @@ The easiest way to getting started would be to look at the sample app! But I wil
     resolvers += "OSS Repo" at "https://oss.sonatype.org/content/repositories/snapshots"
   )
 ```
-
 * Open your Build.scala and add the following to the dependencies
 
-```
+```scala
  "com.imaginea" %% "socket.io.play" % "0.0.3-SNAPSHOT"
 ```
+* Create a controller which extends SocketIOController trait. It will handle client events/messages.
 
-* Create the actor that will handle the events. This actor should implement socketio.SocketIOActor
+Inside this implement the partial function, 'processMessage' which will handle the events/messages. Set clientTimeout to a duration(in seconds) for timeouts for heartbeat, client.
 
-```scala
- class MySocketIO extends SocketIOActor
-```
-
-* Now, you need to implement the partial function, 'processMessage' which will handle the event.
-
-```scala
-    def processMessage: PartialFunction[(String, (String, String, Any)), Unit] = {
-        //Process regular message
-        case ("message", (sessionId: String, namespace: String, msg: String)) => { ... }
-        //Handle event
-        case ("someEvt", (sessionId: String, namespace: String, eventData: JsValue)) => { ... }
-    }
-```
-
-
-* Create a controller extending SocketIOController and set the socketIOActor in it
+An example implementation from sample -
 
 ```scala
     object MySocketIOController extends SocketIOController {
-      lazy val socketIOActor: ActorRef = {
-        Akka.system.actorOf(Props[MySocketIO])
+
+      val clientTimeout = Timeout(10.seconds)
+
+      def processMessage(sessionId: String, packet: Packet) {
+
+        ...
+        }
+
       }
-    }
+```
+
+You have these functions to enqueue events/messages to clients:
+
+```scala
+    def enqueueMsg(sessionId: String, msg: String) 
+
+    def enqueueEvent(sessionId: String, event: String)
+
+    def enqueueJsonMsg(sessionId: String, msg: String)
+
+    def broadcastMsg(msg: String)
+
+    def broadcastEvent(event: String)
+
+    def broadcastJsonMsg(msg: String)
 ```
 
 * Go to your conf/routes file and add the socket.io route to it
 
-```
+```scala
   GET     /socket.io/1/$socketUrl<.*>     controllers.MySocketIOController.handler(socketUrl)
 ```
 
-* You are all set! Now you can start using socket.io JS client as you normally would.
+* That's it. Now you can start using socket.io clients as you normally would.
 
-## I found a bug! What to do?
 
-Create a new issue in [github issues](https://github.com/rohit-tingendab/socket.io.play/issues)!
+### Note:
 
-## I couldn't get it to run, or I got an error trying to run it!
+* There is a parser available to you, all the events/messages that you enqueue are supposed to be already encoded strings.
+  Use encodePacket from Parser. See sample app for details.
 
-Mail me - rohit [at] tingendab (dot) com mentioning socket.io.play in the subject. You can also tweet to @milliondreams with #socketio4play hashtag or create a new issue.
+* You get a sessionId in the processMessage, you can maintain a sessionId container and process events specific to clients.
+
+
+## I found a bug
+
+Please report it in github issues
+
+## Need help running it?
+
+Mail -
+
+saurabh.rawat90@gmail.com
+
+Please mention socket.io.play in the subject.
+
 
 ## This is great! I want to use it on my project!
 
-Glad that you like it, go ahead and use it. It is licensed under Apache License, Version 2.0 and you are free to use it. If possible put a mail to us, *opensource* at *imaginea* dot com.
+Glad that you like it, go ahead and use it. It is licensed under Apache License, Version 2.0.
 
-
-
-
-
+If possible put a mail to us, opensource at imaginea dot com.
