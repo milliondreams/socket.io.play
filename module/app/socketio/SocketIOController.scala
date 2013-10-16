@@ -1,4 +1,4 @@
-package socketio
+package controllers
 
 import scala.concurrent.duration._
 import scala.util.matching.Regex
@@ -18,8 +18,13 @@ import PacketTypes._
 
 trait SocketIOController extends Controller {
 
+  val clientTimeout: Timeout
+
   val xhrMap = collection.mutable.Map.empty[String, ActorRef]
-  val wsMap = collection.mutable.Map.empty[String, ActorRef]
+  val wsMap  = collection.mutable.Map.empty[String, ActorRef]
+
+  val xhrRevMap = collection.mutable.Map.empty[ActorRef, String]
+  val wsRevMap  = collection.mutable.Map.empty[ActorRef, String]
 
   def processMessage(sessionId: String, packet: Packet): Unit
 
@@ -38,11 +43,11 @@ trait SocketIOController extends Controller {
     }
   }
 
-  def enqueueMsg(sessionId: String, msg: String) = enqueue(sessionId, MESSAGE, msg)
+  def enqueueMsg(sessionId: String, msg: String) = enqueue(sessionId, msg, MESSAGE)
 
-  def enqueueEvent(sessionId: String, event: String) = enqueue(sessionId, EVENT, event)
+  def enqueueEvent(sessionId: String, event: String) = enqueue(sessionId, event, EVENT)
 
-  def enqueueJsonMsg(sessionId: String, msg: String) = enqueue(sessionId, PacketTypes.JSON, msg)
+  def enqueueJsonMsg(sessionId: String, msg: String) = enqueue(sessionId, msg, PacketTypes.JSON)
 
   def enqueue(sessionId: String, payload: String, payloadType: String) {
     if (wsMap contains sessionId)
@@ -69,7 +74,8 @@ trait SocketIOController extends Controller {
   def initSession = Action {
     val sessionId = java.util.UUID.randomUUID().toString
     System.err.println("Strating new session: " + sessionId)
-    Ok(sessionId + ":20:15:websocket,xhr-polling")
+    val t = clientTimeout.duration.toSeconds.toString
+    Ok(sessionId + ":" + t + ":" + t +":xhr-polling")
   }
 
   def wsHandler(sessionId: String) = WebSocket.using[String] {
@@ -79,8 +85,9 @@ trait SocketIOController extends Controller {
       } else {
         println("creating new websocket actor")
         val channel = Enumerator.imperative[String]()
-        val wsActor = Akka.system.actorOf(Props(new WSActor(channel, processMessage, wsMap)))
-        wsMap += (sessionId -> wsActor)
+        val wsActor = Akka.system.actorOf(Props(new WSActor(channel, processMessage, wsMap, wsRevMap, clientTimeout)))
+        wsMap    += (sessionId -> wsActor)
+        wsRevMap += (wsActor -> sessionId)
         handleConnectionSetup(sessionId, channel)
       }
   }
@@ -132,8 +139,9 @@ trait SocketIOController extends Controller {
           }
         }
       } else {
-        val xhrActor = Akka.system.actorOf(Props(new XHRActor(processMessage, xhrMap)))
-        xhrMap += (sessionId -> xhrActor)
+        val xhrActor = Akka.system.actorOf(Props(new XHRActor(processMessage, xhrMap, xhrRevMap, clientTimeout)))
+        xhrMap    += (sessionId -> xhrActor)
+        xhrRevMap += (xhrActor -> sessionId)
         Async {
           val res = xhrActor ? EventOrNoop
           res.map {
@@ -145,7 +153,9 @@ trait SocketIOController extends Controller {
   }
 }
 
-class XHRActor(val processMessage: (String, Packet) => Unit, val xhrMap: collection.mutable.Map[String, ActorRef]) extends Actor {
+class XHRActor(processMessage: (String, Packet) => Unit, xhrMap: collection.mutable.Map[String, ActorRef], xhrRevMap: collection.mutable.Map[ActorRef, String], clientTimeout: Timeout) extends Actor {
+  
+  var cancellable: Cancellable = _
   var eventQueue = List.empty[String]
 
   def enqueue: Receive = {
@@ -155,13 +165,29 @@ class XHRActor(val processMessage: (String, Packet) => Unit, val xhrMap: collect
   def sendEventOrNoop(s: ActorRef) {
     eventQueue match {
       case x :: xs => eventQueue = xs; s ! x
-      case Nil => context.system.scheduler.scheduleOnce(9.seconds) {
+      case Nil => context.system.scheduler.scheduleOnce((clientTimeout.duration.toSeconds - 1).seconds) {
         eventQueue match {
           case x :: xs => eventQueue = xs; s ! x
-          case Nil => s ! "8::"
+          case Nil => 
+            s ! "8::"
+            cancellable.cancel
+            cancellable = context.system.scheduler.scheduleOnce((clientTimeout.duration.toSeconds + 1).seconds) {
+              self ! Die
+            }
         }
       }
     }
+  }
+
+  def quit(s: ActorRef) {
+    s ! "0::"
+    quit
+  }
+
+  def quit {
+    xhrMap    -= xhrRevMap(self)
+    xhrRevMap -= self
+    context.stop(self)
   }
 
   def receive = enqueue orElse beforeConnected
@@ -170,6 +196,9 @@ class XHRActor(val processMessage: (String, Packet) => Unit, val xhrMap: collect
     case x =>
       sender ! "1::"
       context.become(afterConnected orElse enqueue)
+      cancellable = context.system.scheduler.scheduleOnce((clientTimeout.duration.toSeconds + 1).seconds) {
+        self ! Die
+      }
   }
 
   def afterConnected: Receive = {
@@ -184,25 +213,24 @@ class XHRActor(val processMessage: (String, Packet) => Unit, val xhrMap: collect
       val packet = Parser.decodePacket(socketData)
 
       packet.packetType match {
-        case DISCONNECT =>
-          s ! "0::"
-          context.stop(self)
 
-        case HEARTBEAT => sendEventOrNoop(s)
-
+        case DISCONNECT => quit(s)
+          
         case _ =>
-          val sessionId = xhrMap.find {
-            case (_, y) => y == self
-          }.get._1
+          val sessionId = xhrRevMap(self)
           processMessage(sessionId, packet)
-          sendEventOrNoop(s)
+          s ! "1"
 
       }
     }
+
+    case Die => quit
   }
 }
 
-class WSActor(channel: PushEnumerator[String], processMessage: (String, Packet) => Unit, wsMap: collection.mutable.Map[String, ActorRef]) extends Actor {
+class WSActor(channel: PushEnumerator[String], processMessage: (String, Packet) => Unit, wsMap: collection.mutable.Map[String, ActorRef], wsRevMap: collection.mutable.Map[ActorRef, String], clientTimeout: Timeout) extends Actor {
+
+  var cancellable: Cancellable = _
 
   def enqueue: Receive = {
     case Enqueue(x) => channel.push(x)
@@ -210,12 +238,23 @@ class WSActor(channel: PushEnumerator[String], processMessage: (String, Packet) 
 
   def sendBeat = channel.push("2::")
 
+  def quit {
+    channel.close()
+    wsMap    -= wsRevMap(self)
+    wsRevMap -= self
+    context.stop(self)
+  }
+
   def receive = beforeConnected
 
   def beforeConnected: Receive = {
     case _ =>
       channel.push("1::")
-      context.system.scheduler.schedule(10.seconds, 10.seconds)(sendBeat)
+      val t = clientTimeout.duration.toSeconds - 1
+      context.system.scheduler.schedule(t.seconds, t.seconds)(sendBeat)
+      cancellable = context.system.scheduler.scheduleOnce((clientTimeout.duration.toSeconds + 1).seconds) {
+        self ! Die
+      }
       context.become(afterConnected orElse enqueue)
   }
 
@@ -225,27 +264,31 @@ class WSActor(channel: PushEnumerator[String], processMessage: (String, Packet) 
       val packet = Parser.decodePacket(socketData)
 
       packet.packetType match {
-        case DISCONNECT =>
-          channel.close()
-          wsMap.remove {
-            wsMap.find((p: (String, ActorRef)) => p._2 == self).get._1
+        
+        case DISCONNECT => quit
+          
+        
+        case HEARTBEAT => 
+          cancellable.cancel
+          cancellable = context.system.scheduler.scheduleOnce((clientTimeout.duration.toSeconds + 1).seconds) {
+            self ! Die
           }
-          context.stop(self)
-
-        case HEARTBEAT => {}
-
+        
         case _ =>
-          val sessionId = wsMap.find {
-            case (_, y) => y == self
-          }.get._1
+          val sessionId = wsRevMap(self)
           processMessage(sessionId, packet)
 
       }
     }
+
+    case Die => quit
+
   }
 }
 
 case object EventOrNoop
+
+case object Die
 
 case class ProcessPacket(x: String)
 
