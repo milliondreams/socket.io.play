@@ -10,8 +10,8 @@ object ApplicationBuild extends Build {
   val appDependencies = Seq(
     // Add your project dependencies here,
     jdbc,
-    anorm
-     "com.imaginea" % "socket-io-play_2.10" % "0.0.3-SNAPSHOT"
+    anorm,
+    "com.imaginea" % "socket-io-play_2.10" % "0.0.3-SNAPSHOT"
   )
 
 
