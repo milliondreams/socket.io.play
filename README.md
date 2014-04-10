@@ -1,10 +1,10 @@
 # socket.io for Play! Framework 2.0 (for Scala)
 
-Socket.io server sode support for Play framework.
+Socket.io server side support for Play framework.
 
 ## What is socket.io?
 
-socket.io provides browser independent bidirectional realtime socket-like communication between server ad browser. 
+socket.io provides browser independent bidirectional realtime socket-like communication between server and browser. 
 From [socket.io site](http://socket.io/)
 >
 > Socket.IO aims to make realtime apps possible in every browser and mobile device, blurring the differences between the different transport mechanisms. It's care-free realtime 100% in JavaScript.
