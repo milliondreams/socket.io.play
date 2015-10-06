@@ -1,6 +1,6 @@
 # socket.io for Play! Framework 2.0 (for Scala)
 
-Socket.io server sode support for Play framework.
+Socket.io server side support for Play framework.
 
 ## What is socket.io?
 
